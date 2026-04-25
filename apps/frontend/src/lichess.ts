@@ -1,20 +1,14 @@
 /** Helpers for handing off positions to Lichess. */
 
-const FEN_PATH_ENCODING_MAP: Record<string, string> = {
-  "/": "_",
-  " ": "_",
-};
-
-function lichessFenSegment(fen: string): string {
-  return fen
-    .trim()
-    .split("")
-    .map((c) => FEN_PATH_ENCODING_MAP[c] ?? c)
-    .join("");
+function lichessAnalysisPathFen(fen: string): string {
+  // Lichess analysis URL format:
+  // /analysis/<board_ranks>_<turn>_<castling>_<ep>_<halfmove>_<fullmove>
+  // Keep board slashes, replace spaces between fields with underscores.
+  return fen.trim().replaceAll(" ", "_");
 }
 
 export function lichessAnalysisUrl(fen: string): string {
-  return `https://lichess.org/analysis/${lichessFenSegment(fen)}`;
+  return `https://lichess.org/analysis/${lichessAnalysisPathFen(fen)}`;
 }
 
 export function lichessEmbedAnalysisUrl(fen: string): string {
@@ -25,5 +19,5 @@ export function lichessEmbedAnalysisUrl(fen: string): string {
 }
 
 export function lichessEditorUrl(fen: string): string {
-  return `https://lichess.org/editor/${lichessFenSegment(fen)}`;
+  return `https://lichess.org/editor?fen=${encodeURIComponent(fen.trim())}`;
 }
