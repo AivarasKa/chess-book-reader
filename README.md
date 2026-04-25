@@ -39,6 +39,14 @@ npm run dev
 
 This starts the backend (`http://localhost:8123`) and the frontend dev server (`http://localhost:5173`) in parallel. Open the frontend URL in your browser.
 
+The frontend reads `apps/frontend/.env.development` for backend routing in dev:
+
+```bash
+VITE_API_BASE_URL=http://127.0.0.1:8123
+```
+
+No Vite API proxy is required.
+
 ## Available scripts
 
 - `npm run dev` - run backend and frontend together

@@ -20,7 +20,7 @@ export type DetectionResult = {
   note: string | null;
 };
 type CacheLookupResponse = { hit: boolean; result: DetectionResult | null };
-const API_BASE = import.meta.env.DEV ? "http://127.0.0.1:8123" : "";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || "";
 const apiUrl = (path: string) => `${API_BASE}${path}`;
 
 const json = async <T>(res: Response): Promise<T> => {
