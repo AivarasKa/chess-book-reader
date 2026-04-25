@@ -41,6 +41,50 @@ class DetectedBoard:
     note: Optional[str] = None
 
 
+def _infer_castling_from_placement(placement: str) -> str:
+    """Naive castling inference from current piece locations only."""
+    rows = placement.split("/")
+    if len(rows) != 8:
+        return "-"
+
+    def piece_at(square: str) -> str:
+        file_idx = ord(square[0]) - ord("a")
+        rank = int(square[1])
+        row = rows[8 - rank]
+        col = 0
+        for ch in row:
+            if ch.isdigit():
+                col += int(ch)
+            else:
+                if col == file_idx:
+                    return ch
+                col += 1
+        return ""
+
+    rights: list[str] = []
+    if piece_at("e1") == "K":
+        if piece_at("h1") == "R":
+            rights.append("K")
+        if piece_at("a1") == "R":
+            rights.append("Q")
+    if piece_at("e8") == "k":
+        if piece_at("h8") == "r":
+            rights.append("k")
+        if piece_at("a8") == "r":
+            rights.append("q")
+    return "".join(rights) or "-"
+
+
+def _apply_naive_castling_override(fen: str) -> str:
+    """Replace castling field using naive king/rook-on-start-squares rule."""
+    parts = fen.strip().split()
+    if len(parts) < 6:
+        return fen
+    placement, side, _castling, ep, half, full = parts[:6]
+    castling = _infer_castling_from_placement(placement)
+    return f"{placement} {side} {castling} {ep} {half} {full}"
+
+
 def _decode_image_bgr(data: bytes) -> np.ndarray:
     img = Image.open(io.BytesIO(data)).convert("RGB")
     return cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
@@ -174,9 +218,13 @@ def detect_board_at_point(
                 note = f"Recognition error on full page: {exc}"
 
         if fen is not None:
+            fen = _apply_naive_castling_override(fen)
             confidence = 0.8
             if note is None:
-                note = "Recognized via Chess_diagram_to_FEN model."
+                note = (
+                    "Recognized via Chess_diagram_to_FEN model. "
+                    "Castling rights inferred naively from piece starting squares."
+                )
         else:
             note = (
                 note
