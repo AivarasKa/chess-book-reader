@@ -140,7 +140,16 @@ textarea {
   background: #111418;
   display: flex;
   justify-content: center;
+  align-items: flex-start;
   padding: 16px;
+}
+
+.pdf-scroll-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
 }
 
 .pdf-pane .empty {

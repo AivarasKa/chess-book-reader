@@ -258,29 +258,9 @@ export default function App() {
         <span className="spacer" />
         {file && (
           <div className="page-controls">
-            <button onClick={() => onPageChange(pageNumber - 1)} disabled={pageNumber <= 1}>
-              Prev
-            </button>
-            <input
-              type="number"
-              value={pageNumber}
-              min={1}
-              max={pageCount || undefined}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                if (!Number.isNaN(n)) onPageChange(n);
-              }}
-              style={{ width: 70 }}
-            />
             <span style={{ color: "var(--fg-muted)", fontSize: 12 }}>
-              / {pageCount || "?"}
+              Page {pageNumber} / {pageCount || "?"}
             </span>
-            <button
-              onClick={() => onPageChange(pageNumber + 1)}
-              disabled={pageCount > 0 && pageNumber >= pageCount}
-            >
-              Next
-            </button>
             <span style={{ width: 12 }} />
             <button onClick={() => setScale((s) => Math.max(0.5, s - 0.2))}>-</button>
             <span style={{ color: "var(--fg-muted)", fontSize: 12 }}>

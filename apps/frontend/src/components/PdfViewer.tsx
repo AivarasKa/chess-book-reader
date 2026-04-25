@@ -32,15 +32,8 @@ type Props = {
 };
 
 export function PdfViewer(props: Props) {
-  const {
-    file,
-    pageNumber,
-    scale,
-    onPageCount,
-    onPageChange,
-    onPageDoubleClick,
-    detectionBox,
-  } = props;
+  const { file, pageNumber, scale, onPageCount, onPageChange, onPageDoubleClick, detectionBox } =
+    props;
 
   const fileMemo = useMemo(() => (file ? { url: URL.createObjectURL(file) } : null), [file]);
   useEffect(() => {
@@ -49,16 +42,99 @@ export function PdfViewer(props: Props) {
     };
   }, [fileMemo]);
 
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [renderedSize, setRenderedSize] = useState<{ w: number; h: number } | null>(null);
+  const [numPages, setNumPages] = useState(0);
+  const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const seenInitialPageRef = useRef(false);
+
+  useEffect(() => {
+    seenInitialPageRef.current = false;
+    pageRefs.current = {};
+    setNumPages(0);
+  }, [fileMemo?.url]);
 
   const handleDocumentLoad = useCallback(
     ({ numPages }: { numPages: number }) => {
+      setNumPages(numPages);
       onPageCount(numPages);
     },
     [onPageCount]
   );
+
+  useEffect(() => {
+    if (!numPages) return;
+    const wrappers = Object.entries(pageRefs.current)
+      .map(([k, el]) => ({ page: Number(k), el }))
+      .filter((x): x is { page: number; el: HTMLDivElement } => !!x.el);
+    if (!wrappers.length) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (!visible) return;
+        const p = Number((visible.target as HTMLElement).dataset.page || 0);
+        if (p >= 1 && p !== pageNumber) onPageChange(p);
+      },
+      { threshold: [0.5, 0.75] }
+    );
+    wrappers.forEach((w) => observer.observe(w.el));
+    return () => observer.disconnect();
+  }, [numPages, onPageChange, pageNumber, scale]);
+
+  useEffect(() => {
+    if (!numPages) return;
+    // Scroll to restored page once after load.
+    if (seenInitialPageRef.current) return;
+    const target = pageRefs.current[pageNumber];
+    if (!target) return;
+    target.scrollIntoView({ block: "start" });
+    seenInitialPageRef.current = true;
+  }, [numPages, pageNumber]);
+
+  if (!file || !fileMemo) {
+    return (
+      <div className="empty">
+        <p>No PDF loaded.</p>
+        <p>Use the Open file button in the top bar to choose a chess book PDF.</p>
+      </div>
+    );
+  }
+
+  return (
+    <Document
+      file={fileMemo}
+      onLoadSuccess={handleDocumentLoad}
+      onLoadError={(err) => console.error("PDF load error", err)}
+    >
+      <div className="pdf-scroll-stack">
+        {Array.from({ length: numPages }, (_, i) => i + 1).map((p) => (
+          <RenderedPage
+            key={p}
+            pageNumber={p}
+            scale={scale}
+            onPageDoubleClick={onPageDoubleClick}
+            detectionBox={detectionBox && detectionBox.pageNumber === p ? detectionBox : null}
+            setWrapperRef={(el) => {
+              pageRefs.current[p] = el;
+            }}
+          />
+        ))}
+      </div>
+    </Document>
+  );
+}
+
+function RenderedPage(props: {
+  pageNumber: number;
+  scale: number;
+  onPageDoubleClick: (info: PageDoubleClick) => void;
+  detectionBox?: { x: number; y: number; w: number; h: number; pageNumber: number } | null;
+  setWrapperRef: (el: HTMLDivElement | null) => void;
+}) {
+  const { pageNumber, scale, onPageDoubleClick, detectionBox, setWrapperRef } = props;
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [renderedSize, setRenderedSize] = useState<{ w: number; h: number } | null>(null);
 
   const handleRenderSuccess = useCallback(() => {
     const canvas = wrapperRef.current?.querySelector("canvas");
@@ -78,15 +154,11 @@ export function PdfViewer(props: Props) {
       const rect = canvas.getBoundingClientRect();
       const xInDisplay = e.clientX - rect.left;
       const yInDisplay = e.clientY - rect.top;
-      // CSS px → pdf.js canvas px (full-resolution rendering).
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
       const clickXFull = xInDisplay * scaleX;
       const clickYFull = yInDisplay * scaleY;
 
-      // Downscale to keep the upload payload modest. Chess diagrams remain
-      // very recognizable at ~1600 px max dimension, and the multipart upload
-      // is small enough that the Vite dev proxy forwards it instantly.
       const longest = Math.max(canvas.width, canvas.height);
       const downscale = Math.min(1, UPLOAD_MAX_DIMENSION / longest);
       const tw = Math.max(1, Math.round(canvas.width * downscale));
@@ -104,10 +176,7 @@ export function PdfViewer(props: Props) {
         off.width = tw;
         off.height = th;
         const ctx = off.getContext("2d");
-        if (!ctx) {
-          console.error("[PdfViewer] failed to acquire 2D context for downscale");
-          return;
-        }
+        if (!ctx) return;
         ctx.drawImage(canvas, 0, 0, tw, th);
         blob = await new Promise<Blob | null>((resolve) =>
           off.toBlob((b) => resolve(b), "image/png")
@@ -122,17 +191,7 @@ export function PdfViewer(props: Props) {
           canvas.toBlob((b) => resolve(b), "image/png")
         );
       }
-
-      if (!blob) {
-        console.error("[PdfViewer] toBlob returned null");
-        return;
-      }
-
-      console.log(
-        `[PdfViewer] page ${pageNumber} double-click → ` +
-          `canvas ${canvas.width}x${canvas.height}, ` +
-          `upload ${pageWidth}x${pageHeight}, blob ${(blob.size / 1024).toFixed(0)} KB`
-      );
+      if (!blob) return;
 
       onPageDoubleClick({
         pageNumber,
@@ -147,51 +206,28 @@ export function PdfViewer(props: Props) {
     [onPageDoubleClick, pageNumber]
   );
 
-  if (!file || !fileMemo) {
-    return (
-      <div className="empty">
-        <p>No PDF loaded.</p>
-        <p>Use the Open file button in the top bar to choose a chess book PDF.</p>
-      </div>
-    );
-  }
-
   return (
-    <Document
-      file={fileMemo}
-      onLoadSuccess={handleDocumentLoad}
-      onLoadError={(err) => console.error("PDF load error", err)}
+    <div
+      ref={(el) => {
+        wrapperRef.current = el;
+        setWrapperRef(el);
+      }}
+      className="pdf-page-wrapper"
+      onDoubleClick={handleDoubleClick}
+      data-page={pageNumber}
     >
-      <div
-        ref={wrapperRef}
-        className="pdf-page-wrapper"
-        onDoubleClick={handleDoubleClick}
-      >
-        <Page
-          pageNumber={pageNumber}
-          scale={scale}
-          renderAnnotationLayer={false}
-          renderTextLayer={false}
-          onRenderSuccess={handleRenderSuccess}
-        />
-        {detectionBox &&
-          detectionBox.pageNumber === pageNumber &&
-          renderedSize &&
-          canvasRef.current && (
-            <DetectionBoxOverlay
-              box={detectionBox}
-              renderedSize={renderedSize}
-              canvas={canvasRef.current}
-            />
-          )}
-      </div>
-      <PageNavSync pageNumber={pageNumber} onPageChange={onPageChange} />
-    </Document>
+      <Page
+        pageNumber={pageNumber}
+        scale={scale}
+        renderAnnotationLayer={false}
+        renderTextLayer={false}
+        onRenderSuccess={handleRenderSuccess}
+      />
+      {detectionBox && renderedSize && canvasRef.current && (
+        <DetectionBoxOverlay box={detectionBox} renderedSize={renderedSize} canvas={canvasRef.current} />
+      )}
+    </div>
   );
-}
-
-function PageNavSync(_: { pageNumber: number; onPageChange: (n: number) => void }) {
-  return null;
 }
 
 function DetectionBoxOverlay(props: {
