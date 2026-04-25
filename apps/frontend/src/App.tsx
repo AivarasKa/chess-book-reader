@@ -33,6 +33,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [detectionError, setDetectionError] = useState<string | null>(null);
   const [missingFile, setMissingFile] = useState<Book | null>(null);
+  const [sidePaneWidth, setSidePaneWidth] = useState(420);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -220,6 +221,22 @@ export default function App() {
   );
 
   const triggerFileDialog = () => fileInputRef.current?.click();
+  const startResize = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const min = 320;
+    const max = Math.min(900, window.innerWidth - 320);
+    const onMove = (ev: MouseEvent) => {
+      const next = window.innerWidth - ev.clientX;
+      const clamped = Math.max(min, Math.min(max, next));
+      setSidePaneWidth(clamped);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
 
   return (
     <div className="app">
@@ -274,7 +291,12 @@ export default function App() {
         )}
       </div>
 
-      <div className="workspace">
+      <div
+        className="workspace"
+        style={{
+          gridTemplateColumns: `minmax(320px, 1fr) 8px ${sidePaneWidth}px`,
+        }}
+      >
         <div className="pdf-pane">
           <PdfViewer
             file={file}
@@ -290,6 +312,14 @@ export default function App() {
             }
           />
         </div>
+        <div
+          className="pane-resizer"
+          onMouseDown={startResize}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize side panel"
+          tabIndex={0}
+        />
         <div className="side-pane">
           {!file && missingFile && (
             <div className="note warning">

@@ -114,7 +114,7 @@ textarea {
 
 .workspace {
   display: grid;
-  grid-template-columns: 1fr 420px;
+  grid-template-columns: minmax(320px, 1fr) 8px 420px;
   min-height: 0;
 }
 
@@ -122,6 +122,18 @@ textarea {
 .side-pane {
   min-height: 0;
   overflow: auto;
+}
+
+.pane-resizer {
+  width: 8px;
+  cursor: col-resize;
+  background: var(--bg-soft);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
+.pane-resizer:hover {
+  background: var(--accent-strong);
 }
 
 .pdf-pane {
