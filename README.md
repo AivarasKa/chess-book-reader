@@ -44,6 +44,7 @@ This starts the backend (`http://localhost:8123`) and the frontend dev server (`
 - `npm run dev` - run backend and frontend together
 - `npm run dev:backend` - run only the backend
 - `npm run dev:frontend` - run only the frontend
+- `npm run stop:dev` - force-stop dev services on ports `8123` and `5173` (Windows/PowerShell)
 - `npm run build:frontend` - production build of the frontend
 - `npm run setup:backend` - create venv and install Python deps
 

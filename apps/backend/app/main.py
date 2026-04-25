@@ -31,7 +31,10 @@ def _startup() -> None:
     storage.init_db()
     try:
         cdf_integration._ensure_loaded()
-        log.info("Chess_diagram_to_FEN library loaded.")
+        warmup_s = cdf_integration.warmup("chess")
+        log.info(
+            "Chess_diagram_to_FEN library loaded and warmed up in %.2fs.", warmup_s
+        )
     except Exception:
         log.exception("Chess_diagram_to_FEN failed to load (will fall back to manual edit)")
 
@@ -105,16 +108,28 @@ async def detect_diagram(
     cached = None
     if book_fingerprint and page is not None:
         cached = storage.find_correction(book_fingerprint, page, (click_x, click_y))
+    if cached is not None:
+        return {
+            "fen": cached["fen"],
+            "confidence": 1.0,
+            "bounds": {
+                "x": cached["region_x"],
+                "y": cached["region_y"],
+                "w": cached["region_w"],
+                "h": cached["region_h"],
+            },
+            "warped_png_b64": None,
+            "from_cache": True,
+            "note": "Loaded a previously corrected position for this region.",
+        }
 
-    detected = recognition.detect_board_at_point(raw, click_x, click_y)
-
-    fen = cached["fen"] if cached else detected.fen
-    confidence = 1.0 if cached else detected.confidence
-    note = (
-        "Loaded a previously corrected position for this region."
-        if cached
-        else detected.note
+    detected = recognition.detect_board_at_point(
+        raw, click_x, click_y, include_preview=False
     )
+
+    fen = detected.fen
+    confidence = detected.confidence
+    note = detected.note
 
     return {
         "fen": fen,
@@ -126,7 +141,7 @@ async def detect_diagram(
             "h": detected.bounds[3],
         },
         "warped_png_b64": detected.warped_png_b64,
-        "from_cache": cached is not None,
+        "from_cache": False,
         "note": note,
     }
 

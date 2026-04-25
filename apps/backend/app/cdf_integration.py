@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sys
 import threading
+import time
 import types
 from pathlib import Path
 from typing import Optional
@@ -101,3 +102,19 @@ def predict_fen(crop: Image.Image) -> Optional[str]:
     if result is None or result.fen is None:
         return None
     return result.fen
+
+
+def warmup(game: str = "chess") -> float:
+    """Eagerly load all model weights so first real detect is faster.
+
+    Returns elapsed warmup time in seconds.
+    """
+    cdf = _ensure_loaded()
+    t0 = time.perf_counter()
+    models = cdf._get_models(game)
+    models.existence.get()
+    models.bbox.get()
+    models.image_rotation.get()
+    models.fen.get()
+    models.orientation.get()
+    return time.perf_counter() - t0

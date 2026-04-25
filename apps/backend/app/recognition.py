@@ -137,13 +137,16 @@ def detect_board_at_point(
     page_image: bytes,
     click_x: float,
     click_y: float,
+    include_preview: bool = False,
 ) -> DetectedBoard:
     """Detect the chessboard nearest the click and return a recognized FEN."""
     bgr = _decode_image_bgr(page_image)
     h, w = bgr.shape[:2]
 
     pil_crop, bounds = _crop_around_click(bgr, click_x, click_y)
-    warped_b64 = _encode_png_b64(cv2.cvtColor(np.array(pil_crop), cv2.COLOR_RGB2BGR))
+    warped_b64 = None
+    if include_preview:
+        warped_b64 = _encode_png_b64(cv2.cvtColor(np.array(pil_crop), cv2.COLOR_RGB2BGR))
 
     fen: Optional[str] = None
     note: Optional[str] = None
