@@ -17,6 +17,11 @@ export function lichessAnalysisUrl(fen: string): string {
   return `https://lichess.org/analysis/${lichessFenSegment(fen)}`;
 }
 
+export function lichessEmbedAnalysisUrl(fen: string): string {
+  const normalizedFen = fen.trim();
+  return `https://lichess.org/embed/analysis?fen=${encodeURIComponent(normalizedFen)}`;
+}
+
 export function lichessEditorUrl(fen: string): string {
   return `https://lichess.org/editor/${lichessFenSegment(fen)}`;
 }

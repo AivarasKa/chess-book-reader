@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
-import { Chessboard } from "react-chessboard";
-import { lichessAnalysisUrl, lichessEditorUrl } from "../lichess";
+import {
+  lichessAnalysisUrl,
+  lichessEditorUrl,
+  lichessEmbedAnalysisUrl,
+} from "../lichess";
 
 type Props = {
   fen: string;
@@ -15,6 +18,7 @@ export function AnalysisPanel(props: Props) {
   const { fen, note, warnLowConfidence, onFenChange, onSaveCorrection } = props;
   const [editorOpen, setEditorOpen] = useState(false);
   const [pasteValue, setPasteValue] = useState("");
+  const [embeddedFen, setEmbeddedFen] = useState(fen);
 
   const isValid = useMemo(() => {
     try {
@@ -24,6 +28,10 @@ export function AnalysisPanel(props: Props) {
       return false;
     }
   }, [fen]);
+
+  useEffect(() => {
+    if (isValid) setEmbeddedFen(fen);
+  }, [fen, isValid]);
 
   const openEditor = () => {
     window.open(lichessEditorUrl(fen), "_blank", "noopener,noreferrer");
@@ -52,11 +60,13 @@ export function AnalysisPanel(props: Props) {
   return (
     <>
       <h2>Position</h2>
-      <div className="board-wrap">
-        <Chessboard
-          position={isValid ? fen : undefined}
-          arePiecesDraggable={false}
-          boardOrientation="white"
+      <div className="lichess-embed-wrap">
+        <iframe
+          key={embeddedFen}
+          title="Lichess embedded analysis"
+          src={lichessEmbedAnalysisUrl(embeddedFen)}
+          loading="lazy"
+          referrerPolicy="no-referrer"
         />
       </div>
 

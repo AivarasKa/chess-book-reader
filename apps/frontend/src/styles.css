@@ -176,10 +176,21 @@ textarea {
   letter-spacing: 0.06em;
 }
 
-.board-wrap {
+.lichess-embed-wrap {
   width: 100%;
-  max-width: 380px;
+  max-width: 100%;
   align-self: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #111;
+}
+
+.lichess-embed-wrap iframe {
+  width: 100%;
+  height: 640px;
+  border: 0;
+  display: block;
 }
 
 .fen-row {
@@ -211,32 +222,6 @@ textarea {
 
 .note.warning {
   border-left-color: var(--danger);
-}
-
-.recent-books {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.recent-books .book-item {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-soft);
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.recent-books .book-item:hover {
-  border-color: var(--accent);
-}
-
-.recent-books .book-item .meta {
-  color: var(--fg-muted);
 }
 
 .modal-backdrop {

@@ -3,7 +3,6 @@ import {
   Book,
   detectDiagram,
   getLastSession,
-  listRecentBooks,
   openBook,
   saveCorrection,
   updateBookProgress,
@@ -31,23 +30,13 @@ export default function App() {
   const [scale, setScale] = useState(1.4);
   const [fen, setFen] = useState(STARTING_FEN);
   const [detection, setDetection] = useState<DetectionState | null>(null);
-  const [recent, setRecent] = useState<Book[]>([]);
   const [busy, setBusy] = useState(false);
   const [detectionError, setDetectionError] = useState<string | null>(null);
   const [missingFile, setMissingFile] = useState<Book | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const refreshRecent = useCallback(async () => {
-    try {
-      setRecent(await listRecentBooks());
-    } catch (err) {
-      console.warn("Failed to load recent books", err);
-    }
-  }, []);
-
   useEffect(() => {
-    refreshRecent();
     (async () => {
       try {
         const last = await getLastSession();
@@ -60,7 +49,7 @@ export default function App() {
         console.warn("No prior session", err);
       }
     })();
-  }, [refreshRecent]);
+  }, []);
 
   const registerBook = useCallback(
     async (picked: File): Promise<Book | null> => {
@@ -103,7 +92,6 @@ export default function App() {
             if (opened.last_fen) setFen(opened.last_fen);
           }
           setMissingFile(null);
-          await refreshRecent();
         } else {
           console.warn(
             "Book registration failed; detection will still work but progress won't persist."
@@ -114,7 +102,7 @@ export default function App() {
         alert("Could not open file: " + (err as Error).message);
       }
     },
-    [missingFile, refreshRecent, registerBook]
+    [missingFile, registerBook]
   );
 
   const onPageChange = useCallback(
@@ -322,25 +310,6 @@ export default function App() {
             onFenChange={onFenChange}
             onSaveCorrection={onSaveCorrection}
           />
-
-          <h2>Recent books</h2>
-          {recent.length === 0 ? (
-            <div style={{ color: "var(--fg-muted)", fontSize: 12 }}>None yet.</div>
-          ) : (
-            <div className="recent-books">
-              {recent.map((b) => (
-                <div
-                  key={b.fingerprint}
-                  className="book-item"
-                  onClick={triggerFileDialog}
-                  title="Click to open file dialog and re-locate this book"
-                >
-                  <span>{b.title || b.path}</span>
-                  <span className="meta">p.{b.last_page}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </div>
