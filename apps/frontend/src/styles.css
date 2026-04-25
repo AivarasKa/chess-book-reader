@@ -205,6 +205,12 @@ textarea {
   display: block;
 }
 
+.embed-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .fen-row {
   display: flex;
   gap: 6px;

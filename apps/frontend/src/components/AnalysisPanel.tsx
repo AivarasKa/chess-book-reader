@@ -18,6 +18,7 @@ export function AnalysisPanel(props: Props) {
   const { fen, note, warnLowConfidence, onFenChange, onSaveCorrection } = props;
   const [editorOpen, setEditorOpen] = useState(false);
   const [embeddedFen, setEmbeddedFen] = useState(fen);
+  const [embedOrientation, setEmbedOrientation] = useState<"white" | "black">("white");
 
   const isValid = useMemo(() => {
     try {
@@ -38,14 +39,33 @@ export function AnalysisPanel(props: Props) {
     window.open(lichessAnalysisUrl(fen), "_blank", "noopener,noreferrer");
   };
 
+  const toggleTurn = () => {
+    const parts = fen.trim().split(/\s+/);
+    if (parts.length < 6) return;
+    parts[1] = parts[1] === "b" ? "w" : "b";
+    onFenChange(parts.slice(0, 6).join(" "));
+  };
+
+  const toggleOrientation = () => {
+    setEmbedOrientation((o) => (o === "white" ? "black" : "white"));
+  };
+
   return (
     <>
       <h2>Position</h2>
+      <div className="embed-controls">
+        <button onClick={toggleTurn}>
+          Turn: {fen.split(/\s+/)[1] === "b" ? "Black" : "White"}
+        </button>
+        <button onClick={toggleOrientation}>
+          Rotate: {embedOrientation === "white" ? "White bottom" : "Black bottom"}
+        </button>
+      </div>
       <div className="lichess-embed-wrap">
         <iframe
-          key={embeddedFen}
+          key={`${embeddedFen}-${embedOrientation}`}
           title="Lichess embedded analysis"
-          src={lichessEmbedAnalysisUrl(embeddedFen)}
+          src={lichessEmbedAnalysisUrl(embeddedFen, embedOrientation)}
           loading="lazy"
           referrerPolicy="no-referrer"
         />

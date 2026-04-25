@@ -11,11 +11,14 @@ export function lichessAnalysisUrl(fen: string): string {
   return `https://lichess.org/analysis/${lichessAnalysisPathFen(fen)}`;
 }
 
-export function lichessEmbedAnalysisUrl(fen: string): string {
+export function lichessEmbedAnalysisUrl(
+  fen: string,
+  orientation: "white" | "black" = "white"
+): string {
   // Lichess embed expects query fen in "slash + underscore" style, e.g.
   // 4rk2/6b1/.../7K_w_-_-_0_1 (spaces become underscores, slashes stay).
   const embedFen = fen.trim().replaceAll(" ", "_");
-  return `https://lichess.org/embed/analysis?fen=${embedFen}`;
+  return `https://lichess.org/embed/analysis?fen=${embedFen}&color=${orientation}`;
 }
 
 export function lichessEditorUrl(fen: string): string {
