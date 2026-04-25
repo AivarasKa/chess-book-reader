@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.ts","./src/fingerprint.ts","./src/lichess.ts","./src/main.tsx","./src/pdfworker.ts","./src/vite-env.d.ts","./src/components/analysispanel.tsx","./src/components/pdfviewer.tsx"],"version":"5.9.3"}

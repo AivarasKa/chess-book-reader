@@ -1,0 +1,272 @@
+:root {
+  --bg: #1d1f24;
+  --bg-elevated: #262931;
+  --bg-soft: #2f333d;
+  --border: #3a3f4b;
+  --fg: #e7e9ee;
+  --fg-muted: #aab0bd;
+  --accent: #6aa6ff;
+  --accent-strong: #4a8ce8;
+  --danger: #e6685a;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+button {
+  font: inherit;
+  background: var(--bg-soft);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: white;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b1220;
+  font-weight: 600;
+}
+
+button.primary:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: white;
+}
+
+input[type="text"],
+input[type="number"],
+textarea {
+  font: inherit;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.app {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar .title {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.topbar .file-name {
+  color: var(--fg-muted);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 480px;
+}
+
+.topbar .spacer {
+  flex: 1;
+}
+
+.topbar .page-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 1fr 420px;
+  min-height: 0;
+}
+
+.pdf-pane,
+.side-pane {
+  min-height: 0;
+  overflow: auto;
+}
+
+.pdf-pane {
+  background: #111418;
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+}
+
+.pdf-pane .empty {
+  color: var(--fg-muted);
+  margin: 60px auto;
+  text-align: center;
+  max-width: 420px;
+  line-height: 1.5;
+}
+
+.pdf-page-wrapper {
+  position: relative;
+  user-select: none;
+  cursor: crosshair;
+}
+
+.pdf-page-wrapper canvas {
+  display: block;
+  background: white;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.detection-overlay {
+  position: absolute;
+  border: 2px solid var(--accent);
+  background: rgba(106, 166, 255, 0.12);
+  pointer-events: none;
+  border-radius: 2px;
+}
+
+.side-pane {
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.side-pane h2 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.board-wrap {
+  width: 100%;
+  max-width: 380px;
+  align-self: center;
+}
+
+.fen-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.fen-row input {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.note {
+  font-size: 12px;
+  color: var(--fg-muted);
+  background: var(--bg-soft);
+  border-radius: 6px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+}
+
+.note.warning {
+  border-left-color: var(--danger);
+}
+
+.recent-books {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recent-books .book-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-soft);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.recent-books .book-item:hover {
+  border-color: var(--accent);
+}
+
+.recent-books .book-item .meta {
+  color: var(--fg-muted);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+  width: min(560px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.modal h3 {
+  margin: 0;
+}
+
+.modal .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
