@@ -3,5 +3,19 @@ uvicorn[standard]==0.32.1
 pydantic==2.10.3
 pillow==11.0.0
 numpy==2.1.3
-opencv-python-headless==4.10.0.84
+opencv-python>=4.13.0.92
 python-multipart==0.0.19
+
+# Chess_diagram_to_FEN inference dependencies (vendored library lives in
+# vendor/Chess_diagram_to_FEN; model weights are downloaded separately by
+# `npm run setup:models`).
+matplotlib
+scikit-image
+tqdm
+pyffish
+gdown
+fonttools
+pyfastnoiselite
+cairosvg
+# Note: PyTorch CPU is installed separately via npm run setup:backend
+# because it requires the PyTorch CPU wheel index.

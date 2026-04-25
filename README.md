@@ -23,10 +23,13 @@ From the repo root:
 
 ```bash
 npm install
+git clone https://github.com/tsoj/Chess_diagram_to_FEN.git apps/backend/vendor/Chess_diagram_to_FEN
 npm run setup:backend
 ```
 
-`setup:backend` creates `apps/backend/.venv` and installs Python dependencies.
+`setup:backend` creates `apps/backend/.venv`, installs Python dependencies (including PyTorch CPU + the recognition library deps), and downloads pre-trained model weights (~80 MB) into the vendored library.
+
+> The vendored `Chess_diagram_to_FEN` library does the heavy lifting for diagram → FEN recognition. It uses several training-time dependencies that aren't available on Windows; we stub them at inference time in `apps/backend/app/cdf_integration.py`.
 
 ## Run (development)
 

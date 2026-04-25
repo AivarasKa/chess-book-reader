@@ -8,7 +8,11 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import recognition, storage
+import logging
+
+from . import cdf_integration, recognition, storage
+
+log = logging.getLogger(__name__)
 
 
 app = FastAPI(title="Chess Book Reader Backend", version="0.1.0")
@@ -25,6 +29,11 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup() -> None:
     storage.init_db()
+    try:
+        cdf_integration._ensure_loaded()
+        log.info("Chess_diagram_to_FEN library loaded.")
+    except Exception:
+        log.exception("Chess_diagram_to_FEN failed to load (will fall back to manual edit)")
 
 
 # ---------- Health ----------

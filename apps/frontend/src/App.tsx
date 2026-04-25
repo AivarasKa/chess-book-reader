@@ -61,11 +61,15 @@ export default function App() {
     })();
   }, [refreshRecent]);
 
-  const onFilePicked = useCallback(
-    async (picked: File) => {
-      setFile(picked);
-      setDetection(null);
-      const fp = await fingerprintFile(picked);
+  const registerBook = useCallback(
+    async (picked: File): Promise<Book | null> => {
+      let fp: string;
+      try {
+        fp = await fingerprintFile(picked);
+      } catch (err) {
+        console.error("Fingerprint failed", err);
+        return null;
+      }
       try {
         const opened = await openBook({
           fingerprint: fp,
@@ -73,21 +77,43 @@ export default function App() {
           title: picked.name,
         });
         setBook(opened);
-        if (missingFile && missingFile.fingerprint === fp) {
-          setPageNumber(opened.last_page);
-          if (opened.last_fen) setFen(opened.last_fen);
-        } else {
-          setPageNumber(opened.last_page || 1);
-          if (opened.last_fen) setFen(opened.last_fen);
-        }
-        setMissingFile(null);
-        await refreshRecent();
+        return opened;
       } catch (err) {
-        console.error(err);
-        alert("Could not register the book with the backend: " + (err as Error).message);
+        console.error("openBook failed", err);
+        return null;
       }
     },
-    [missingFile, refreshRecent]
+    []
+  );
+
+  const onFilePicked = useCallback(
+    async (picked: File) => {
+      setFile(picked);
+      setDetection(null);
+      setBook(null);
+      try {
+        const opened = await registerBook(picked);
+        if (opened) {
+          if (missingFile && missingFile.fingerprint === opened.fingerprint) {
+            setPageNumber(opened.last_page);
+            if (opened.last_fen) setFen(opened.last_fen);
+          } else {
+            setPageNumber(opened.last_page || 1);
+            if (opened.last_fen) setFen(opened.last_fen);
+          }
+          setMissingFile(null);
+          await refreshRecent();
+        } else {
+          console.warn(
+            "Book registration failed; detection will still work but progress won't persist."
+          );
+        }
+      } catch (err) {
+        console.error("onFilePicked unexpected error", err);
+        alert("Could not open file: " + (err as Error).message);
+      }
+    },
+    [missingFile, refreshRecent, registerBook]
   );
 
   const onPageChange = useCallback(
@@ -106,17 +132,21 @@ export default function App() {
 
   const handleDoubleClick = useCallback(
     async (info: PageDoubleClick) => {
-      if (!book) {
+      if (!file) {
         alert("Open a PDF first.");
         return;
       }
       setBusy(true);
       try {
+        let activeBook = book;
+        if (!activeBook) {
+          activeBook = await registerBook(file);
+        }
         const result = await detectDiagram({
           pageBlob: info.pageImage,
           clickX: info.clickXOnPage,
           clickY: info.clickYOnPage,
-          bookFingerprint: book.fingerprint,
+          bookFingerprint: activeBook?.fingerprint,
           page: info.pageNumber,
         });
         setFen(result.fen);
@@ -128,10 +158,12 @@ export default function App() {
           confidence: result.confidence,
           fromCache: result.from_cache,
         });
-        updateBookProgress({
-          fingerprint: book.fingerprint,
-          last_fen: result.fen,
-        }).catch(() => undefined);
+        if (activeBook) {
+          updateBookProgress({
+            fingerprint: activeBook.fingerprint,
+            last_fen: result.fen,
+          }).catch(() => undefined);
+        }
       } catch (err) {
         console.error(err);
         alert("Detection failed: " + (err as Error).message);
@@ -139,7 +171,7 @@ export default function App() {
         setBusy(false);
       }
     },
-    [book]
+    [book, file, registerBook]
   );
 
   const onFenChange = useCallback(

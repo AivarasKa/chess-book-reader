@@ -21,3 +21,6 @@ Thumbs.db
 # App data
 *.sqlite3
 *.sqlite3-journal
+
+# Vendored third-party libraries (cloned via setup script)
+apps/backend/vendor/
