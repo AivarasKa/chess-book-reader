@@ -177,6 +177,78 @@ def _crop_around_click(
     return pil, bounds
 
 
+def detect_boards_on_page(
+    page_image: bytes,
+    *,
+    max_candidates: int = 6,
+    pad_ratio: float = 0.12,
+) -> list[DetectedBoard]:
+    """Detect multiple board candidates on a page and recognize each one.
+
+    Used for book-level pre-caching on upload.
+    """
+    bgr = _decode_image_bgr(page_image)
+    h, w = bgr.shape[:2]
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    quads = _candidate_quads(gray)
+    if not quads:
+        return []
+
+    rects: list[tuple[int, int, int, int, int]] = []
+    for q in quads:
+        x, y, bw, bh = cv2.boundingRect(q)
+        rects.append((bw * bh, x, y, bw, bh))
+    rects.sort(reverse=True)
+
+    out: list[DetectedBoard] = []
+    seen: list[tuple[int, int, int, int]] = []
+    for _area, x, y, bw, bh in rects:
+        if len(out) >= max_candidates:
+            break
+
+        # Skip near-duplicates by simple center/size proximity.
+        dup = False
+        cx, cy = x + bw / 2, y + bh / 2
+        for sx, sy, sw, sh in seen:
+            scx, scy = sx + sw / 2, sy + sh / 2
+            if abs(cx - scx) < 20 and abs(cy - scy) < 20 and abs(bw - sw) < 20 and abs(bh - sh) < 20:
+                dup = True
+                break
+        if dup:
+            continue
+
+        pad_x = int(bw * pad_ratio)
+        pad_y = int(bh * pad_ratio)
+        x0 = max(0, x - pad_x)
+        y0 = max(0, y - pad_y)
+        x1 = min(w, x + bw + pad_x)
+        y1 = min(h, y + bh + pad_y)
+        crop = bgr[y0:y1, x0:x1]
+        pil = Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
+
+        try:
+            fen = cdf_integration.predict_fen(pil) if cdf_integration.is_available() else None
+        except Exception:
+            log.exception("predict_fen failed in detect_boards_on_page")
+            fen = None
+        if fen is None:
+            continue
+
+        fen = _apply_naive_castling_override(fen)
+        out.append(
+            DetectedBoard(
+                fen=fen,
+                confidence=0.8,
+                bounds=(float(x), float(y), float(bw), float(bh)),
+                warped_png_b64=None,
+                note="Pre-cached via page scan.",
+            )
+        )
+        seen.append((x, y, bw, bh))
+
+    return out
+
+
 def detect_board_at_point(
     page_image: bytes,
     click_x: float,

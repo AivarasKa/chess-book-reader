@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import io
+import time
 from typing import Any, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from PIL import Image
 from pydantic import BaseModel, Field
 
 import logging
@@ -68,6 +71,19 @@ def open_book(payload: BookOpen) -> dict[str, Any]:
     return {"book": book}
 
 
+class BookPrecacheComplete(BaseModel):
+    fingerprint: str = Field(..., min_length=8, max_length=128)
+
+
+@app.post("/api/books/precache-complete")
+def book_precache_complete(payload: BookPrecacheComplete) -> dict[str, Any]:
+    storage.mark_precache_complete(payload.fingerprint)
+    book = storage.get_book(payload.fingerprint)
+    if not book:
+        raise HTTPException(404, "Unknown book fingerprint")
+    return {"book": book}
+
+
 @app.post("/api/books/progress")
 def book_progress(payload: BookProgress) -> dict[str, Any]:
     if payload.last_page is None and payload.last_fen is None:
@@ -100,15 +116,24 @@ async def detect_diagram(
     click_y: float = Form(...),
     book_fingerprint: Optional[str] = Form(None),
     page: Optional[int] = Form(None),
+    page_width: Optional[float] = Form(None),
+    page_height: Optional[float] = Form(None),
 ) -> dict[str, Any]:
     raw = await page_image.read()
     if not raw:
         raise HTTPException(400, "Empty page_image")
 
+    t0 = time.perf_counter()
+
     cached = None
     if book_fingerprint and page is not None:
         cached = storage.find_correction(book_fingerprint, page, (click_x, click_y))
     if cached is not None:
+        log.info(
+            "diagram/detect page=%s source=correction_cache %.1fms",
+            page,
+            (time.perf_counter() - t0) * 1000,
+        )
         return {
             "fen": cached["fen"],
             "confidence": 1.0,
@@ -123,6 +148,38 @@ async def detect_diagram(
             "note": "Loaded a previously corrected position for this region.",
         }
 
+    normalized_cached = None
+    if (
+        book_fingerprint
+        and page is not None
+        and page_width is not None
+        and page_height is not None
+        and page_width > 0
+        and page_height > 0
+    ):
+        px_n = click_x / page_width
+        py_n = click_y / page_height
+        normalized_cached = storage.find_diagram_cache(book_fingerprint, page, (px_n, py_n))
+    if normalized_cached is not None and page_width and page_height:
+        log.info(
+            "diagram/detect page=%s source=diagram_cache %.1fms",
+            page,
+            (time.perf_counter() - t0) * 1000,
+        )
+        return {
+            "fen": normalized_cached["fen"],
+            "confidence": float(normalized_cached.get("confidence") or 0.8),
+            "bounds": {
+                "x": normalized_cached["region_x_n"] * page_width,
+                "y": normalized_cached["region_y_n"] * page_height,
+                "w": normalized_cached["region_w_n"] * page_width,
+                "h": normalized_cached["region_h_n"] * page_height,
+            },
+            "warped_png_b64": None,
+            "from_cache": True,
+            "note": "Loaded from normalized diagram cache.",
+        }
+
     detected = recognition.detect_board_at_point(
         raw, click_x, click_y, include_preview=False
     )
@@ -131,6 +188,39 @@ async def detect_diagram(
     confidence = detected.confidence
     note = detected.note
 
+    # Persist successful auto-detections so subsequent clicks on the same
+    # diagram region can be served from cache across app restarts.
+    if book_fingerprint and page is not None and confidence > 0:
+        try:
+            if page_width and page_height and page_width > 0 and page_height > 0:
+                region_n = (
+                    detected.bounds[0] / page_width,
+                    detected.bounds[1] / page_height,
+                    detected.bounds[2] / page_width,
+                    detected.bounds[3] / page_height,
+                )
+                storage.add_diagram_cache(
+                    book_fingerprint,
+                    page,
+                    region_n,
+                    fen,
+                    confidence=confidence,
+                )
+            else:
+                storage.add_correction(
+                    book_fingerprint,
+                    page,
+                    detected.bounds,
+                    fen,
+                )
+        except Exception:
+            log.exception("Failed to persist auto-detection cache entry")
+
+    log.info(
+        "diagram/detect page=%s source=model %.1fms",
+        page,
+        (time.perf_counter() - t0) * 1000,
+    )
     return {
         "fen": fen,
         "confidence": confidence,
@@ -144,6 +234,60 @@ async def detect_diagram(
         "from_cache": False,
         "note": note,
     }
+
+
+@app.post("/api/cache/clear")
+def clear_cache() -> dict[str, str]:
+    storage.clear_all_caches()
+    return {"status": "ok"}
+
+
+@app.post("/api/diagram/precache-page")
+async def precache_page(
+    page_image: UploadFile = File(...),
+    book_fingerprint: str = Form(...),
+    page: int = Form(...),
+) -> dict[str, Any]:
+    raw = await page_image.read()
+    if not raw:
+        raise HTTPException(400, "Empty page_image")
+    if page < 1:
+        raise HTTPException(400, "page must be >= 1")
+
+    try:
+        img = Image.open(io.BytesIO(raw))
+        img_w, img_h = float(img.width), float(img.height)
+    except Exception:
+        raise HTTPException(400, "Invalid page_image")
+
+    boards = recognition.detect_boards_on_page(raw)
+    added = 0
+    for b in boards:
+        try:
+            if img_w <= 0 or img_h <= 0:
+                continue
+            cx_n = (b.bounds[0] + b.bounds[2] / 2) / img_w
+            cy_n = (b.bounds[1] + b.bounds[3] / 2) / img_h
+            existing = storage.find_diagram_cache(book_fingerprint, page, (cx_n, cy_n))
+            if existing is not None:
+                continue
+            region_n = (
+                b.bounds[0] / img_w,
+                b.bounds[1] / img_h,
+                b.bounds[2] / img_w,
+                b.bounds[3] / img_h,
+            )
+            storage.add_diagram_cache(
+                book_fingerprint,
+                page,
+                region_n,
+                b.fen,
+                confidence=b.confidence,
+            )
+            added += 1
+        except Exception:
+            log.exception("Failed to add pre-cache correction")
+    return {"status": "ok", "added": added}
 
 
 # ---------- Corrections ----------

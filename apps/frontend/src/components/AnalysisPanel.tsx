@@ -68,7 +68,6 @@ export function AnalysisPanel(props: Props) {
           key={`${embeddedFen}-${embedOrientation}`}
           title="Lichess embedded analysis"
           src={lichessEmbedAnalysisUrl(embeddedFen, embedOrientation)}
-          loading="lazy"
           referrerPolicy="no-referrer"
         />
       </div>

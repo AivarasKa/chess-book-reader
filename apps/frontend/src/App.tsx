@@ -3,15 +3,19 @@ import {
   Book,
   detectDiagram,
   getLastSession,
+  markPrecacheComplete,
   openBook,
+  precachePage,
   saveCorrection,
   updateBookProgress,
 } from "./api";
 import { fingerprintFile } from "./fingerprint";
 import { PdfViewer, PageDoubleClick } from "./components/PdfViewer";
 import { AnalysisPanel } from "./components/AnalysisPanel";
+import { pdfjs } from "react-pdf";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const PRECACHE_UPLOAD_MAX_DIMENSION = 1600;
 
 type DetectionState = {
   pageNumber: number;
@@ -34,6 +38,12 @@ export default function App() {
   const [detectionError, setDetectionError] = useState<string | null>(null);
   const [missingFile, setMissingFile] = useState<Book | null>(null);
   const [sidePaneWidth, setSidePaneWidth] = useState(420);
+  const [indexing, setIndexing] = useState<{
+    running: boolean;
+    current: number;
+    total: number;
+    added: number;
+  }>({ running: false, current: 0, total: 0, added: 0 });
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -93,6 +103,72 @@ export default function App() {
             if (opened.last_fen) setFen(opened.last_fen);
           }
           setMissingFile(null);
+          // Pre-cache once per book (persisted); reopening the same PDF skips this.
+          if (!opened.precache_complete) {
+            setIndexing({ running: true, current: 0, total: 0, added: 0 });
+            let finishedAllPages = false;
+            try {
+              const data = await picked.arrayBuffer();
+              const loadingTask = pdfjs.getDocument({ data });
+              const pdf = await loadingTask.promise;
+              let addedTotal = 0;
+              setIndexing((s) => ({ ...s, total: pdf.numPages }));
+              for (let p = 1; p <= pdf.numPages; p++) {
+                const page = await pdf.getPage(p);
+                const viewport = page.getViewport({ scale });
+                const canvas = document.createElement("canvas");
+                const ctx = canvas.getContext("2d");
+                if (!ctx) continue;
+                canvas.width = Math.round(viewport.width);
+                canvas.height = Math.round(viewport.height);
+                await page.render({ canvasContext: ctx, viewport }).promise;
+
+                // Match click-time upload behavior so cached regions align with
+                // future click coordinates.
+                const longest = Math.max(canvas.width, canvas.height);
+                const downscale = Math.min(1, PRECACHE_UPLOAD_MAX_DIMENSION / longest);
+                const tw = Math.max(1, Math.round(canvas.width * downscale));
+                const th = Math.max(1, Math.round(canvas.height * downscale));
+
+                let blob: Blob | null = null;
+                if (downscale < 1) {
+                  const off = document.createElement("canvas");
+                  off.width = tw;
+                  off.height = th;
+                  const offCtx = off.getContext("2d");
+                  if (!offCtx) continue;
+                  offCtx.drawImage(canvas, 0, 0, tw, th);
+                  blob = await new Promise<Blob | null>((resolve) =>
+                    off.toBlob((b) => resolve(b), "image/png")
+                  );
+                } else {
+                  blob = await new Promise<Blob | null>((resolve) =>
+                    canvas.toBlob((b) => resolve(b), "image/png")
+                  );
+                }
+
+                if (blob !== null) {
+                  const out = await precachePage({
+                    pageBlob: blob,
+                    bookFingerprint: opened.fingerprint,
+                    page: p,
+                  });
+                  addedTotal += out.added;
+                }
+                setIndexing({ running: true, current: p, total: pdf.numPages, added: addedTotal });
+              }
+              finishedAllPages = true;
+            } catch (err) {
+              console.warn("Book pre-cache failed", err);
+            } finally {
+              setIndexing((s) => ({ ...s, running: false }));
+            }
+            if (finishedAllPages) {
+              markPrecacheComplete({ fingerprint: opened.fingerprint })
+                .then((b) => setBook(b))
+                .catch((err) => console.warn("markPrecacheComplete failed", err));
+            }
+          }
         } else {
           console.warn(
             "Book registration failed; detection will still work but progress won't persist."
@@ -103,7 +179,7 @@ export default function App() {
         alert("Could not open file: " + (err as Error).message);
       }
     },
-    [missingFile, registerBook]
+    [missingFile, registerBook, scale]
   );
 
   const onPageChange = useCallback(
@@ -145,12 +221,15 @@ export default function App() {
           pageBlob: info.pageImage,
           clickX: info.clickXOnPage,
           clickY: info.clickYOnPage,
+          pageWidth: info.pageWidth,
+          pageHeight: info.pageHeight,
           bookFingerprint: activeBook?.fingerprint,
           page: info.pageNumber,
         });
         console.log("[App] detectDiagram resolved", {
           fen: result.fen,
           confidence: result.confidence,
+          from_cache: result.from_cache,
         });
         // Backend bounds are in the (possibly downscaled) uploaded-image
         // coordinate space. Map them back to the original canvas pixels so
@@ -301,6 +380,12 @@ export default function App() {
           tabIndex={0}
         />
         <div className="side-pane">
+          {indexing.running && (
+            <div className="note">
+              Indexing book diagrams: {indexing.current}/{indexing.total || "?"} pages, cached{" "}
+              {indexing.added} diagrams.
+            </div>
+          )}
           {!file && missingFile && (
             <div className="note warning">
               Last session was <strong>{missingFile.title || missingFile.path}</strong>.
@@ -315,7 +400,7 @@ export default function App() {
 
           <AnalysisPanel
             fen={fen}
-            note={detection?.note ?? "Double-click a diagram in the PDF to detect a position."}
+            note={detection?.note ?? null}
             warnLowConfidence={!!detection && detection.confidence < 0.5 && !detection.fromCache}
             onFenChange={onFenChange}
             onSaveCorrection={onSaveCorrection}

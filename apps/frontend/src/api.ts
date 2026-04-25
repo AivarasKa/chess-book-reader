@@ -7,6 +7,8 @@ export type Book = {
   last_fen: string | null;
   opened_at: string;
   updated_at: string;
+  /** 1 after a full book precache pass; reopen skips re-indexing until cache clear. */
+  precache_complete?: number;
 };
 
 export type DetectionResult = {
@@ -35,6 +37,16 @@ export async function openBook(input: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
+  });
+  const { book } = await json<{ book: Book }>(res);
+  return book;
+}
+
+export async function markPrecacheComplete(input: { fingerprint: string }): Promise<Book> {
+  const res = await fetch("/api/books/precache-complete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fingerprint: input.fingerprint }),
   });
   const { book } = await json<{ book: Book }>(res);
   return book;
@@ -70,6 +82,8 @@ export async function detectDiagram(input: {
   pageBlob: Blob;
   clickX: number;
   clickY: number;
+  pageWidth?: number;
+  pageHeight?: number;
   bookFingerprint?: string;
   page?: number;
   timeoutMs?: number;
@@ -78,6 +92,8 @@ export async function detectDiagram(input: {
   fd.append("page_image", input.pageBlob, "page.png");
   fd.append("click_x", String(input.clickX));
   fd.append("click_y", String(input.clickY));
+  if (input.pageWidth != null) fd.append("page_width", String(input.pageWidth));
+  if (input.pageHeight != null) fd.append("page_height", String(input.pageHeight));
   if (input.bookFingerprint) fd.append("book_fingerprint", input.bookFingerprint);
   if (input.page != null) fd.append("page", String(input.page));
 
@@ -97,8 +113,11 @@ export async function detectDiagram(input: {
       signal: controller.signal,
     });
     const elapsed = performance.now() - t0;
-    console.log(`[api] detectDiagram ← ${res.status} in ${elapsed.toFixed(0)} ms`);
-    return await json<DetectionResult>(res);
+    const body = await json<DetectionResult>(res);
+    console.log(
+      `[api] detectDiagram ← ${res.status} in ${elapsed.toFixed(0)} ms (from_cache=${body.from_cache})`
+    );
+    return body;
   } finally {
     clearTimeout(timeout);
   }
@@ -118,5 +137,26 @@ export async function saveCorrection(input: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+  await json<{ status: string }>(res);
+}
+
+export async function precachePage(input: {
+  pageBlob: Blob;
+  bookFingerprint: string;
+  page: number;
+}): Promise<{ added: number }> {
+  const fd = new FormData();
+  fd.append("page_image", input.pageBlob, "page.png");
+  fd.append("book_fingerprint", input.bookFingerprint);
+  fd.append("page", String(input.page));
+  const res = await fetch("/api/diagram/precache-page", {
+    method: "POST",
+    body: fd,
+  });
+  return json<{ status: string; added: number }>(res);
+}
+
+export async function clearCache(): Promise<void> {
+  const res = await fetch("/api/cache/clear", { method: "POST" });
   await json<{ status: string }>(res);
 }

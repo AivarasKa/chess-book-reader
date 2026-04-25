@@ -76,8 +76,29 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_corrections_lookup
                 ON corrections (book_fingerprint, page);
+
+            CREATE TABLE IF NOT EXISTS diagram_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                book_fingerprint TEXT NOT NULL,
+                page INTEGER NOT NULL,
+                region_x_n REAL NOT NULL,
+                region_y_n REAL NOT NULL,
+                region_w_n REAL NOT NULL,
+                region_h_n REAL NOT NULL,
+                fen TEXT NOT NULL,
+                confidence REAL NOT NULL DEFAULT 0.0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_diagram_cache_lookup
+                ON diagram_cache (book_fingerprint, page);
             """
         )
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(books)").fetchall()}
+        if "precache_complete" not in cols:
+            conn.execute(
+                "ALTER TABLE books ADD COLUMN precache_complete INTEGER NOT NULL DEFAULT 0"
+            )
 
 
 def upsert_book(fingerprint: str, path: str, title: str | None) -> dict[str, Any]:
@@ -132,6 +153,18 @@ def get_book(fingerprint: str) -> dict[str, Any] | None:
             "SELECT * FROM books WHERE fingerprint = ?", (fingerprint,)
         ).fetchone()
         return dict(row) if row else None
+
+
+def mark_precache_complete(fingerprint: str) -> None:
+    with _LOCK, connect() as conn:
+        conn.execute(
+            """
+            UPDATE books
+            SET precache_complete = 1, updated_at = datetime('now')
+            WHERE fingerprint = ?
+            """,
+            (fingerprint,),
+        )
 
 
 def get_session(key: str) -> str | None:
@@ -212,3 +245,53 @@ def find_correction(
         ):
             return dict(r)
     return None
+
+
+def add_diagram_cache(
+    book_fingerprint: str,
+    page: int,
+    region_n: tuple[float, float, float, float],
+    fen: str,
+    confidence: float = 0.0,
+) -> None:
+    x, y, w, h = region_n
+    with _LOCK, connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO diagram_cache
+                (book_fingerprint, page, region_x_n, region_y_n, region_w_n, region_h_n, fen, confidence)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (book_fingerprint, page, x, y, w, h, fen, confidence),
+        )
+
+
+def find_diagram_cache(
+    book_fingerprint: str,
+    page: int,
+    point_n: tuple[float, float],
+) -> dict[str, Any] | None:
+    px, py = point_n
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM diagram_cache
+            WHERE book_fingerprint = ? AND page = ?
+            ORDER BY created_at DESC
+            """,
+            (book_fingerprint, page),
+        ).fetchall()
+    for r in rows:
+        if (
+            r["region_x_n"] <= px <= r["region_x_n"] + r["region_w_n"]
+            and r["region_y_n"] <= py <= r["region_y_n"] + r["region_h_n"]
+        ):
+            return dict(r)
+    return None
+
+
+def clear_all_caches() -> None:
+    with _LOCK, connect() as conn:
+        conn.execute("DELETE FROM corrections")
+        conn.execute("DELETE FROM diagram_cache")
+        conn.execute("UPDATE books SET precache_complete = 0")
