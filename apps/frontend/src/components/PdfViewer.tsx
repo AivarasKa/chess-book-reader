@@ -10,7 +10,7 @@ export type PageDoubleClick = {
   clickXOnPage: number;
   /** Click Y in the *uploaded* image coordinate space (already downscaled). */
   clickYOnPage: number;
-  pageImage: Blob;
+  createPageImage: () => Promise<Blob | null>;
   /** Width of the uploaded image (after downscale). */
   pageWidth: number;
   /** Height of the uploaded image (after downscale). */
@@ -164,7 +164,6 @@ function RenderedPage(props: {
       const tw = Math.max(1, Math.round(canvas.width * downscale));
       const th = Math.max(1, Math.round(canvas.height * downscale));
 
-      let blob: Blob | null;
       let pageWidth = canvas.width;
       let pageHeight = canvas.height;
       let clickX = clickXFull;
@@ -178,26 +177,29 @@ function RenderedPage(props: {
         const ctx = off.getContext("2d");
         if (!ctx) return;
         ctx.drawImage(canvas, 0, 0, tw, th);
-        blob = await new Promise<Blob | null>((resolve) =>
-          off.toBlob((b) => resolve(b), "image/png")
-        );
         pageWidth = tw;
         pageHeight = th;
         clickX = clickXFull * downscale;
         clickY = clickYFull * downscale;
         upscaleToOriginal = 1 / downscale;
-      } else {
-        blob = await new Promise<Blob | null>((resolve) =>
-          canvas.toBlob((b) => resolve(b), "image/png")
-        );
       }
-      if (!blob) return;
 
       onPageDoubleClick({
         pageNumber,
         clickXOnPage: clickX,
         clickYOnPage: clickY,
-        pageImage: blob,
+        createPageImage: async () => {
+          if (downscale < 1) {
+            const off = document.createElement("canvas");
+            off.width = tw;
+            off.height = th;
+            const ctx = off.getContext("2d");
+            if (!ctx) return null;
+            ctx.drawImage(canvas, 0, 0, tw, th);
+            return new Promise<Blob | null>((resolve) => off.toBlob((b) => resolve(b), "image/png"));
+          }
+          return new Promise<Blob | null>((resolve) => canvas.toBlob((b) => resolve(b), "image/png"));
+        },
         pageWidth,
         pageHeight,
         upscaleToOriginal,

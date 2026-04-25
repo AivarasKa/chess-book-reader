@@ -16,6 +16,7 @@ import { pdfjs } from "react-pdf";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const PRECACHE_UPLOAD_MAX_DIMENSION = 1600;
+const PROGRESS_SAVE_DEBOUNCE_MS = 3000;
 
 type DetectionState = {
   pageNumber: number;
@@ -46,6 +47,8 @@ export default function App() {
   }>({ running: false, current: 0, total: 0, added: 0 });
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingProgressPageRef = useRef<number | null>(null);
+  const progressSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -182,18 +185,53 @@ export default function App() {
     [missingFile, registerBook, scale]
   );
 
+  const flushPendingPageProgress = useCallback(() => {
+    if (!book || pendingProgressPageRef.current === null) return;
+    const page = pendingProgressPageRef.current;
+    pendingProgressPageRef.current = null;
+    updateBookProgress({ fingerprint: book.fingerprint, last_page: page }).catch((err) =>
+      console.warn("Failed to persist page", err)
+    );
+  }, [book]);
+
+  const schedulePageProgressSave = useCallback(
+    (page: number) => {
+      if (!book) return;
+      pendingProgressPageRef.current = page;
+      if (progressSaveTimerRef.current !== null) return;
+      progressSaveTimerRef.current = setTimeout(() => {
+        progressSaveTimerRef.current = null;
+        flushPendingPageProgress();
+      }, PROGRESS_SAVE_DEBOUNCE_MS);
+    },
+    [book, flushPendingPageProgress]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (progressSaveTimerRef.current !== null) {
+        clearTimeout(progressSaveTimerRef.current);
+        progressSaveTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (progressSaveTimerRef.current !== null) {
+      clearTimeout(progressSaveTimerRef.current);
+      progressSaveTimerRef.current = null;
+    }
+    pendingProgressPageRef.current = null;
+  }, [book?.fingerprint]);
+
   const onPageChange = useCallback(
     (next: number) => {
       const clamped = Math.max(1, Math.min(pageCount || next, next));
       setPageNumber(clamped);
       setDetection(null);
-      if (book) {
-        updateBookProgress({ fingerprint: book.fingerprint, last_page: clamped }).catch(
-          (err) => console.warn("Failed to persist page", err)
-        );
-      }
+      schedulePageProgressSave(clamped);
     },
-    [book, pageCount]
+    [pageCount, schedulePageProgressSave]
   );
 
   const handleDoubleClick = useCallback(
@@ -218,7 +256,7 @@ export default function App() {
         }
         console.log("[App] calling detectDiagram…");
         const result = await detectDiagram({
-          pageBlob: info.pageImage,
+          createPageBlob: info.createPageImage,
           clickX: info.clickXOnPage,
           clickY: info.clickYOnPage,
           pageWidth: info.pageWidth,

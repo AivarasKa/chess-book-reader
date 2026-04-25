@@ -6,7 +6,7 @@ import io
 import time
 from typing import Any, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel, Field
@@ -27,6 +27,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    t0 = time.perf_counter()
+    response = await call_next(request)
+    ms = (time.perf_counter() - t0) * 1000
+    response.headers["X-Process-Time-Ms"] = f"{ms:.1f}"
+    return response
 
 
 @app.on_event("startup")
@@ -63,6 +72,15 @@ class BookProgress(BaseModel):
     fingerprint: str
     last_page: Optional[int] = None
     last_fen: Optional[str] = None
+
+
+class DiagramCacheLookup(BaseModel):
+    click_x: float
+    click_y: float
+    book_fingerprint: str = Field(..., min_length=8, max_length=128)
+    page: int = Field(..., ge=1)
+    page_width: float = Field(..., gt=0)
+    page_height: float = Field(..., gt=0)
 
 
 @app.post("/api/books/open")
@@ -108,32 +126,18 @@ def last_session() -> dict[str, Any]:
 
 # ---------- Diagram detection ----------
 
-
-@app.post("/api/diagram/detect")
-async def detect_diagram(
-    page_image: UploadFile = File(...),
-    click_x: float = Form(...),
-    click_y: float = Form(...),
-    book_fingerprint: Optional[str] = Form(None),
-    page: Optional[int] = Form(None),
-    page_width: Optional[float] = Form(None),
-    page_height: Optional[float] = Form(None),
-) -> dict[str, Any]:
-    raw = await page_image.read()
-    if not raw:
-        raise HTTPException(400, "Empty page_image")
-
-    t0 = time.perf_counter()
-
+def _lookup_cached_detection(
+    click_x: float,
+    click_y: float,
+    book_fingerprint: Optional[str],
+    page: Optional[int],
+    page_width: Optional[float],
+    page_height: Optional[float],
+) -> dict[str, Any] | None:
     cached = None
     if book_fingerprint and page is not None:
         cached = storage.find_correction(book_fingerprint, page, (click_x, click_y))
     if cached is not None:
-        log.info(
-            "diagram/detect page=%s source=correction_cache %.1fms",
-            page,
-            (time.perf_counter() - t0) * 1000,
-        )
         return {
             "fen": cached["fen"],
             "confidence": 1.0,
@@ -161,11 +165,6 @@ async def detect_diagram(
         py_n = click_y / page_height
         normalized_cached = storage.find_diagram_cache(book_fingerprint, page, (px_n, py_n))
     if normalized_cached is not None and page_width and page_height:
-        log.info(
-            "diagram/detect page=%s source=diagram_cache %.1fms",
-            page,
-            (time.perf_counter() - t0) * 1000,
-        )
         return {
             "fen": normalized_cached["fen"],
             "confidence": float(normalized_cached.get("confidence") or 0.8),
@@ -179,6 +178,66 @@ async def detect_diagram(
             "from_cache": True,
             "note": "Loaded from normalized diagram cache.",
         }
+    return None
+
+
+@app.post("/api/diagram/cache-lookup")
+def diagram_cache_lookup(payload: DiagramCacheLookup) -> dict[str, Any]:
+    t0 = time.perf_counter()
+    cached = _lookup_cached_detection(
+        payload.click_x,
+        payload.click_y,
+        payload.book_fingerprint,
+        payload.page,
+        payload.page_width,
+        payload.page_height,
+    )
+    source = "miss"
+    if cached is not None:
+        source = (
+            "correction_cache"
+            if (cached.get("note") or "").startswith("Loaded a previously corrected")
+            else "diagram_cache"
+        )
+    log.info(
+        "diagram/cache-lookup page=%s source=%s %.1fms",
+        payload.page,
+        source,
+        (time.perf_counter() - t0) * 1000,
+    )
+    return {"hit": cached is not None, "result": cached}
+
+
+@app.post("/api/diagram/detect")
+async def detect_diagram(
+    page_image: UploadFile = File(...),
+    click_x: float = Form(...),
+    click_y: float = Form(...),
+    book_fingerprint: Optional[str] = Form(None),
+    page: Optional[int] = Form(None),
+    page_width: Optional[float] = Form(None),
+    page_height: Optional[float] = Form(None),
+) -> dict[str, Any]:
+    t0 = time.perf_counter()
+    raw = await page_image.read()
+    if not raw:
+        raise HTTPException(400, "Empty page_image")
+    cached = _lookup_cached_detection(
+        click_x, click_y, book_fingerprint, page, page_width, page_height
+    )
+    if cached is not None:
+        source = (
+            "correction_cache"
+            if (cached.get("note") or "").startswith("Loaded a previously corrected")
+            else "diagram_cache"
+        )
+        log.info(
+            "diagram/detect page=%s source=%s %.1fms",
+            page,
+            source,
+            (time.perf_counter() - t0) * 1000,
+        )
+        return cached
 
     detected = recognition.detect_board_at_point(
         raw, click_x, click_y, include_preview=False

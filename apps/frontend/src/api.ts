@@ -19,6 +19,9 @@ export type DetectionResult = {
   from_cache: boolean;
   note: string | null;
 };
+type CacheLookupResponse = { hit: boolean; result: DetectionResult | null };
+const API_BASE = import.meta.env.DEV ? "http://127.0.0.1:8123" : "";
+const apiUrl = (path: string) => `${API_BASE}${path}`;
 
 const json = async <T>(res: Response): Promise<T> => {
   if (!res.ok) {
@@ -33,7 +36,7 @@ export async function openBook(input: {
   path: string;
   title?: string | null;
 }): Promise<Book> {
-  const res = await fetch("/api/books/open", {
+  const res = await fetch(apiUrl("/api/books/open"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -43,7 +46,7 @@ export async function openBook(input: {
 }
 
 export async function markPrecacheComplete(input: { fingerprint: string }): Promise<Book> {
-  const res = await fetch("/api/books/precache-complete", {
+  const res = await fetch(apiUrl("/api/books/precache-complete"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ fingerprint: input.fingerprint }),
@@ -57,7 +60,7 @@ export async function updateBookProgress(input: {
   last_page?: number;
   last_fen?: string;
 }): Promise<Book> {
-  const res = await fetch("/api/books/progress", {
+  const res = await fetch(apiUrl("/api/books/progress"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -67,19 +70,20 @@ export async function updateBookProgress(input: {
 }
 
 export async function listRecentBooks(): Promise<Book[]> {
-  const res = await fetch("/api/books/recent");
+  const res = await fetch(apiUrl("/api/books/recent"));
   const { books } = await json<{ books: Book[] }>(res);
   return books;
 }
 
 export async function getLastSession(): Promise<Book | null> {
-  const res = await fetch("/api/session/last");
+  const res = await fetch(apiUrl("/api/session/last"));
   const { book } = await json<{ book: Book | null }>(res);
   return book;
 }
 
 export async function detectDiagram(input: {
-  pageBlob: Blob;
+  pageBlob?: Blob;
+  createPageBlob?: () => Promise<Blob | null>;
   clickX: number;
   clickY: number;
   pageWidth?: number;
@@ -88,26 +92,62 @@ export async function detectDiagram(input: {
   page?: number;
   timeoutMs?: number;
 }): Promise<DetectionResult> {
-  const fd = new FormData();
-  fd.append("page_image", input.pageBlob, "page.png");
-  fd.append("click_x", String(input.clickX));
-  fd.append("click_y", String(input.clickY));
-  if (input.pageWidth != null) fd.append("page_width", String(input.pageWidth));
-  if (input.pageHeight != null) fd.append("page_height", String(input.pageHeight));
-  if (input.bookFingerprint) fd.append("book_fingerprint", input.bookFingerprint);
-  if (input.page != null) fd.append("page", String(input.page));
-
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(new Error("Detection request timed out")),
     input.timeoutMs ?? 60_000
   );
   try {
+    const canLookupCache =
+      !!input.bookFingerprint &&
+      input.page != null &&
+      input.pageWidth != null &&
+      input.pageHeight != null &&
+      input.pageWidth > 0 &&
+      input.pageHeight > 0;
+
+    if (canLookupCache) {
+      const tLookup = performance.now();
+      const lookupRes = await fetch(apiUrl("/api/diagram/cache-lookup"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          click_x: input.clickX,
+          click_y: input.clickY,
+          page_width: input.pageWidth,
+          page_height: input.pageHeight,
+          book_fingerprint: input.bookFingerprint,
+          page: input.page,
+        }),
+      });
+      const lookupElapsed = performance.now() - tLookup;
+      const lookup = await json<CacheLookupResponse>(lookupRes);
+      console.log(
+        `[api] detectDiagram cache-lookup ← ${lookupRes.status} in ${lookupElapsed.toFixed(0)} ms (hit=${lookup.hit})`
+      );
+      if (lookup.hit && lookup.result) {
+        return lookup.result;
+      }
+    }
+
+    const blob = input.pageBlob ?? (await input.createPageBlob?.());
+    if (!blob) throw new Error("Could not capture page image for detection.");
+
+    const fd = new FormData();
+    fd.append("page_image", blob, "page.png");
+    fd.append("click_x", String(input.clickX));
+    fd.append("click_y", String(input.clickY));
+    if (input.pageWidth != null) fd.append("page_width", String(input.pageWidth));
+    if (input.pageHeight != null) fd.append("page_height", String(input.pageHeight));
+    if (input.bookFingerprint) fd.append("book_fingerprint", input.bookFingerprint);
+    if (input.page != null) fd.append("page", String(input.page));
+
     console.log(
-      `[api] detectDiagram → POST /api/diagram/detect (blob ${(input.pageBlob.size / 1024).toFixed(0)} KB)`
+      `[api] detectDiagram → POST /api/diagram/detect (blob ${(blob.size / 1024).toFixed(0)} KB)`
     );
     const t0 = performance.now();
-    const res = await fetch("/api/diagram/detect", {
+    const res = await fetch(apiUrl("/api/diagram/detect"), {
       method: "POST",
       body: fd,
       signal: controller.signal,
@@ -132,7 +172,7 @@ export async function saveCorrection(input: {
   region_h: number;
   fen: string;
 }): Promise<void> {
-  const res = await fetch("/api/corrections", {
+  const res = await fetch(apiUrl("/api/corrections"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -149,7 +189,7 @@ export async function precachePage(input: {
   fd.append("page_image", input.pageBlob, "page.png");
   fd.append("book_fingerprint", input.bookFingerprint);
   fd.append("page", String(input.page));
-  const res = await fetch("/api/diagram/precache-page", {
+  const res = await fetch(apiUrl("/api/diagram/precache-page"), {
     method: "POST",
     body: fd,
   });
@@ -157,6 +197,6 @@ export async function precachePage(input: {
 }
 
 export async function clearCache(): Promise<void> {
-  const res = await fetch("/api/cache/clear", { method: "POST" });
+  const res = await fetch(apiUrl("/api/cache/clear"), { method: "POST" });
   await json<{ status: string }>(res);
 }
