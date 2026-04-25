@@ -424,13 +424,6 @@ export default function App() {
               {indexing.added} diagrams.
             </div>
           )}
-          {!file && missingFile && (
-            <div className="note warning">
-              Last session was <strong>{missingFile.title || missingFile.path}</strong>.
-              The browser cannot reopen local files automatically - use Open PDF... to
-              re-locate it.
-            </div>
-          )}
           {busy && <div className="note">Detecting...</div>}
           {!busy && detectionError && (
             <div className="note warning">{detectionError}</div>

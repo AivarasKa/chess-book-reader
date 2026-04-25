@@ -59,9 +59,7 @@ export function AnalysisPanel(props: Props) {
         <button onClick={toggleTurn}>
           Turn: {fen.split(/\s+/)[1] === "b" ? "Black" : "White"}
         </button>
-        <button onClick={toggleOrientation}>
-          Rotate: {embedOrientation === "white" ? "White bottom" : "Black bottom"}
-        </button>
+        <button onClick={toggleOrientation}>Flip board</button>
       </div>
       <div className="lichess-embed-wrap">
         <iframe
