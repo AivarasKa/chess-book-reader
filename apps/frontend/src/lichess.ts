@@ -18,8 +18,10 @@ export function lichessAnalysisUrl(fen: string): string {
 }
 
 export function lichessEmbedAnalysisUrl(fen: string): string {
-  const normalizedFen = fen.trim();
-  return `https://lichess.org/embed/analysis?fen=${encodeURIComponent(normalizedFen)}`;
+  // Lichess embed expects query fen in "slash + underscore" style, e.g.
+  // 4rk2/6b1/.../7K_w_-_-_0_1 (spaces become underscores, slashes stay).
+  const embedFen = fen.trim().replaceAll(" ", "_");
+  return `https://lichess.org/embed/analysis?fen=${embedFen}`;
 }
 
 export function lichessEditorUrl(fen: string): string {
