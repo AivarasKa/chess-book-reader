@@ -49,9 +49,11 @@ export function AnalysisPanel(props: Props) {
   const toggleOrientation = () => {
     setEmbedOrientation((o) => (o === "white" ? "black" : "white"));
   };
+  const visibleNote =
+    note && note.startsWith("Recognized via Chess_diagram_to_FEN model.") ? null : note;
 
   return (
-    <>
+    <div className="analysis-panel">
       <h2>Position</h2>
       <div className="embed-controls">
         <button onClick={toggleTurn}>
@@ -71,26 +73,11 @@ export function AnalysisPanel(props: Props) {
         />
       </div>
 
-      <div className="fen-row">
-        <input
-          type="text"
-          value={fen}
-          onChange={(e) => onFenChange(e.target.value)}
-          spellCheck={false}
-        />
-        <button
-          onClick={() => navigator.clipboard.writeText(fen).catch(() => undefined)}
-          title="Copy FEN"
-        >
-          Copy
-        </button>
-      </div>
-
-      {note && (
-        <div className={"note" + (warnLowConfidence ? " warning" : "")}>{note}</div>
+      {visibleNote && (
+        <div className={"note" + (warnLowConfidence ? " warning" : "")}>{visibleNote}</div>
       )}
 
-      <div className="action-row">
+      <div className="action-row action-row-bottom">
         <button className="primary" onClick={openEditor}>
           Edit Board (Lichess)
         </button>
@@ -108,7 +95,7 @@ export function AnalysisPanel(props: Props) {
           onCancel={() => setEditorOpen(false)}
         />
       )}
-    </>
+    </div>
   );
 }
 
