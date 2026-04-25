@@ -38,7 +38,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [detectionError, setDetectionError] = useState<string | null>(null);
   const [missingFile, setMissingFile] = useState<Book | null>(null);
-  const [sidePaneWidth, setSidePaneWidth] = useState(420);
+  const [sidePaneWidth, setSidePaneWidth] = useState(500);
   const [indexing, setIndexing] = useState<{
     running: boolean;
     current: number;
