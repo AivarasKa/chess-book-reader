@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 
-_LOCK = threading.Lock()
+_LOCK = threading.RLock()
 
 
 def _data_dir() -> Path:
@@ -96,7 +96,9 @@ def upsert_book(fingerprint: str, path: str, title: str | None) -> dict[str, Any
         row = conn.execute(
             "SELECT * FROM books WHERE fingerprint = ?", (fingerprint,)
         ).fetchone()
-        set_session("last_book_fingerprint", fingerprint)
+        # Reuse the same connection — opening a second one here would
+        # deadlock against this transaction's pending write on the same DB.
+        _set_session_with(conn, "last_book_fingerprint", fingerprint)
         return dict(row)
 
 
@@ -140,15 +142,19 @@ def get_session(key: str) -> str | None:
         return row["value"] if row else None
 
 
+def _set_session_with(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO session (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        (key, value),
+    )
+
+
 def set_session(key: str, value: str) -> None:
     with _LOCK, connect() as conn:
-        conn.execute(
-            """
-            INSERT INTO session (key, value) VALUES (?, ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value
-            """,
-            (key, value),
-        )
+        _set_session_with(conn, key, value)
 
 
 def get_session_json(key: str) -> Any | None:

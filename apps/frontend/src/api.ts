@@ -72,6 +72,7 @@ export async function detectDiagram(input: {
   clickY: number;
   bookFingerprint?: string;
   page?: number;
+  timeoutMs?: number;
 }): Promise<DetectionResult> {
   const fd = new FormData();
   fd.append("page_image", input.pageBlob, "page.png");
@@ -79,8 +80,28 @@ export async function detectDiagram(input: {
   fd.append("click_y", String(input.clickY));
   if (input.bookFingerprint) fd.append("book_fingerprint", input.bookFingerprint);
   if (input.page != null) fd.append("page", String(input.page));
-  const res = await fetch("/api/diagram/detect", { method: "POST", body: fd });
-  return json<DetectionResult>(res);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(new Error("Detection request timed out")),
+    input.timeoutMs ?? 60_000
+  );
+  try {
+    console.log(
+      `[api] detectDiagram → POST /api/diagram/detect (blob ${(input.pageBlob.size / 1024).toFixed(0)} KB)`
+    );
+    const t0 = performance.now();
+    const res = await fetch("/api/diagram/detect", {
+      method: "POST",
+      body: fd,
+      signal: controller.signal,
+    });
+    const elapsed = performance.now() - t0;
+    console.log(`[api] detectDiagram ← ${res.status} in ${elapsed.toFixed(0)} ms`);
+    return await json<DetectionResult>(res);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function saveCorrection(input: {

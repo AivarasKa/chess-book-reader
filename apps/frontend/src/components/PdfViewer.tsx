@@ -6,12 +6,20 @@ import "../pdfWorker";
 
 export type PageDoubleClick = {
   pageNumber: number;
+  /** Click X in the *uploaded* image coordinate space (already downscaled). */
   clickXOnPage: number;
+  /** Click Y in the *uploaded* image coordinate space (already downscaled). */
   clickYOnPage: number;
   pageImage: Blob;
+  /** Width of the uploaded image (after downscale). */
   pageWidth: number;
+  /** Height of the uploaded image (after downscale). */
   pageHeight: number;
+  /** Factor mapping uploaded-image px → original canvas px (>= 1 when downscaled). */
+  upscaleToOriginal: number;
 };
+
+const UPLOAD_MAX_DIMENSION = 1600;
 
 type Props = {
   file: File | null;
@@ -63,28 +71,77 @@ export function PdfViewer(props: Props) {
   const handleDoubleClick = useCallback(
     async (e: React.MouseEvent<HTMLDivElement>) => {
       const canvas = canvasRef.current;
-      if (!canvas) return;
+      if (!canvas) {
+        console.warn("[PdfViewer] double-click ignored: canvas not ready");
+        return;
+      }
       const rect = canvas.getBoundingClientRect();
       const xInDisplay = e.clientX - rect.left;
       const yInDisplay = e.clientY - rect.top;
-      // Convert from displayed CSS pixels to pdf.js canvas pixels (= rendered page-space pixels)
+      // CSS px → pdf.js canvas px (full-resolution rendering).
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
-      const clickXOnPage = xInDisplay * scaleX;
-      const clickYOnPage = yInDisplay * scaleY;
+      const clickXFull = xInDisplay * scaleX;
+      const clickYFull = yInDisplay * scaleY;
 
-      const blob: Blob | null = await new Promise((resolve) =>
-        canvas.toBlob((b) => resolve(b), "image/png")
+      // Downscale to keep the upload payload modest. Chess diagrams remain
+      // very recognizable at ~1600 px max dimension, and the multipart upload
+      // is small enough that the Vite dev proxy forwards it instantly.
+      const longest = Math.max(canvas.width, canvas.height);
+      const downscale = Math.min(1, UPLOAD_MAX_DIMENSION / longest);
+      const tw = Math.max(1, Math.round(canvas.width * downscale));
+      const th = Math.max(1, Math.round(canvas.height * downscale));
+
+      let blob: Blob | null;
+      let pageWidth = canvas.width;
+      let pageHeight = canvas.height;
+      let clickX = clickXFull;
+      let clickY = clickYFull;
+      let upscaleToOriginal = 1;
+
+      if (downscale < 1) {
+        const off = document.createElement("canvas");
+        off.width = tw;
+        off.height = th;
+        const ctx = off.getContext("2d");
+        if (!ctx) {
+          console.error("[PdfViewer] failed to acquire 2D context for downscale");
+          return;
+        }
+        ctx.drawImage(canvas, 0, 0, tw, th);
+        blob = await new Promise<Blob | null>((resolve) =>
+          off.toBlob((b) => resolve(b), "image/png")
+        );
+        pageWidth = tw;
+        pageHeight = th;
+        clickX = clickXFull * downscale;
+        clickY = clickYFull * downscale;
+        upscaleToOriginal = 1 / downscale;
+      } else {
+        blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob((b) => resolve(b), "image/png")
+        );
+      }
+
+      if (!blob) {
+        console.error("[PdfViewer] toBlob returned null");
+        return;
+      }
+
+      console.log(
+        `[PdfViewer] page ${pageNumber} double-click → ` +
+          `canvas ${canvas.width}x${canvas.height}, ` +
+          `upload ${pageWidth}x${pageHeight}, blob ${(blob.size / 1024).toFixed(0)} KB`
       );
-      if (!blob) return;
 
       onPageDoubleClick({
         pageNumber,
-        clickXOnPage,
-        clickYOnPage,
+        clickXOnPage: clickX,
+        clickYOnPage: clickY,
         pageImage: blob,
-        pageWidth: canvas.width,
-        pageHeight: canvas.height,
+        pageWidth,
+        pageHeight,
+        upscaleToOriginal,
       });
     },
     [onPageDoubleClick, pageNumber]

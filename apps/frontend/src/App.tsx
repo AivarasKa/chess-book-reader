@@ -33,6 +33,7 @@ export default function App() {
   const [detection, setDetection] = useState<DetectionState | null>(null);
   const [recent, setRecent] = useState<Book[]>([]);
   const [busy, setBusy] = useState(false);
+  const [detectionError, setDetectionError] = useState<string | null>(null);
   const [missingFile, setMissingFile] = useState<Book | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -132,16 +133,25 @@ export default function App() {
 
   const handleDoubleClick = useCallback(
     async (info: PageDoubleClick) => {
+      console.log("[App] handleDoubleClick start", {
+        page: info.pageNumber,
+        bookSet: !!book,
+        fileSet: !!file,
+      });
       if (!file) {
-        alert("Open a PDF first.");
+        setDetectionError("Open a PDF first.");
         return;
       }
       setBusy(true);
+      setDetectionError(null);
       try {
         let activeBook = book;
         if (!activeBook) {
+          console.log("[App] book missing, calling registerBook…");
           activeBook = await registerBook(file);
+          console.log("[App] registerBook returned", { ok: !!activeBook });
         }
+        console.log("[App] calling detectDiagram…");
         const result = await detectDiagram({
           pageBlob: info.pageImage,
           clickX: info.clickXOnPage,
@@ -149,10 +159,24 @@ export default function App() {
           bookFingerprint: activeBook?.fingerprint,
           page: info.pageNumber,
         });
+        console.log("[App] detectDiagram resolved", {
+          fen: result.fen,
+          confidence: result.confidence,
+        });
+        // Backend bounds are in the (possibly downscaled) uploaded-image
+        // coordinate space. Map them back to the original canvas pixels so
+        // the on-page overlay lands in the right place.
+        const k = info.upscaleToOriginal;
+        const bounds = {
+          x: result.bounds.x * k,
+          y: result.bounds.y * k,
+          w: result.bounds.w * k,
+          h: result.bounds.h * k,
+        };
         setFen(result.fen);
         setDetection({
           pageNumber: info.pageNumber,
-          bounds: result.bounds,
+          bounds,
           fen: result.fen,
           note: result.note,
           confidence: result.confidence,
@@ -165,9 +189,10 @@ export default function App() {
           }).catch(() => undefined);
         }
       } catch (err) {
-        console.error(err);
-        alert("Detection failed: " + (err as Error).message);
+        console.error("[App] detection failed", err);
+        setDetectionError("Detection failed: " + (err as Error).message);
       } finally {
+        console.log("[App] handleDoubleClick finally — busy=false");
         setBusy(false);
       }
     },
@@ -286,6 +311,9 @@ export default function App() {
             </div>
           )}
           {busy && <div className="note">Detecting...</div>}
+          {!busy && detectionError && (
+            <div className="note warning">{detectionError}</div>
+          )}
 
           <AnalysisPanel
             fen={fen}
