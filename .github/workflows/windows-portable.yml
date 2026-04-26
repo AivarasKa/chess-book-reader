@@ -1,4 +1,4 @@
-name: Windows Portable Package
+name: Trigger release
 
 on:
   workflow_dispatch:
