@@ -435,6 +435,7 @@ export default function App() {
               <label className="menu-checkbox">
                 <input
                   type="checkbox"
+                  data-testid="experimental-local-history"
                   checked={enableLocalHistory}
                   onChange={(e) => setEnableLocalHistory(e.target.checked)}
                 />

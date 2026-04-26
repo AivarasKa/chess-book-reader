@@ -1,14 +1,22 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function enableLocalHistoryExperimental(page: Page) {
+  await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByTestId("experimental-local-history").check();
+  await page.keyboard.press("Escape");
+}
 
 test.describe("analysis modes", () => {
   test("local history board is visible when switching modes", async ({ page }) => {
     await page.goto("/");
+    await enableLocalHistoryExperimental(page);
     await page.getByTestId("mode-local").click();
     await expect(page.locator(".local-board-wrap")).toBeVisible();
   });
 
   test("can add and remove local history item", async ({ page }) => {
     await page.goto("/");
+    await enableLocalHistoryExperimental(page);
     await page.getByTestId("mode-local").click();
 
     await page.getByTestId("history-name-input").fill("Test puzzle");
@@ -25,6 +33,7 @@ test.describe("analysis modes", () => {
 
   test("mode switch preserves local history session state", async ({ page }) => {
     await page.goto("/");
+    await enableLocalHistoryExperimental(page);
     await page.getByTestId("mode-local").click();
     await page.getByTestId("history-name-input").fill("Keep me");
     await page.getByTestId("history-add").click();

@@ -58,7 +58,6 @@ export function AnalysisPanel(props: Props) {
         <LocalHistoryMode
           visible={mode === "local"}
           detectedFen={fen}
-          onSaveCorrection={onSaveCorrection}
         />
       )}
     </div>
