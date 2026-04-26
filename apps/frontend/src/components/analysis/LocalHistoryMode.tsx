@@ -199,6 +199,15 @@ function setCurrentFenInTree(tree: VariationTree, nextFen: string): VariationTre
   return next;
 }
 
+function normalizeFenPosition(fen: string): string {
+  const parts = fen.trim().split(/\s+/);
+  const placement = parts[0] ?? "";
+  const turn = parts[1] ?? "w";
+  const castling = parts[2] ?? "-";
+  const ep = parts[3] ?? "-";
+  return `${placement} ${turn} ${castling} ${ep}`;
+}
+
 function pickVerboseMove(g: Chess, orig: Key, dest: Key) {
   const candidates = g.moves({ verbose: true }).filter((m) => m.from === orig && m.to === dest);
   if (!candidates.length) return null;
@@ -259,6 +268,7 @@ export function LocalHistoryMode(props: Props) {
   const boardElRef = useRef<HTMLDivElement | null>(null);
   const groundRef = useRef<Api | null>(null);
   const treeRef = useRef(tree);
+  const redoNodeRef = useRef<string | null>(null);
   treeRef.current = tree;
   const lastDetectedFenRef = useRef(detectedFen);
   const currentFen = useMemo(() => getCurrentFen(tree), [tree]);
@@ -272,11 +282,12 @@ export function LocalHistoryMode(props: Props) {
   }, [visible]);
 
   useEffect(() => {
-    if (detectedFen === lastDetectedFenRef.current) return;
+    if (normalizeFenPosition(detectedFen) === normalizeFenPosition(lastDetectedFenRef.current)) return;
     lastDetectedFenRef.current = detectedFen;
     // Keep saved history items, but always make the live board follow new scans.
     setActiveId(null);
     setTree(createTree(detectedFen));
+    redoNodeRef.current = null;
   }, [detectedFen]);
 
   const currentPathIds = useMemo(() => getCurrentPathIds(tree), [tree]);
@@ -310,6 +321,13 @@ export function LocalHistoryMode(props: Props) {
         .filter((id) => id !== rootPreferred)
         .map((id) => buildInlineLineFrom(tree, id, rootTurn, rootFullMove, currentPathSet)),
     [tree, rootPreferred, rootTurn, rootFullMove, currentPathSet],
+  );
+  const sortedHistory = useMemo(
+    () =>
+      [...history].sort((a, b) =>
+        a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true }),
+      ),
+    [history],
   );
 
   const syncActiveItemTree = (nextTree: VariationTree) => {
@@ -365,7 +383,8 @@ export function LocalHistoryMode(props: Props) {
     }
   };
 
-  const jumpToNode = (id: string | null) => {
+  const jumpToNode = (id: string | null, keepRedo = false) => {
+    if (!keepRedo) redoNodeRef.current = null;
     setTree((prev) => {
       const next = { ...prev, currentNodeId: id };
       syncActiveItemTree(next);
@@ -379,6 +398,62 @@ export function LocalHistoryMode(props: Props) {
   const openEditor = () => {
     window.open(lichessEditorUrl(currentFen), "_blank", "noopener,noreferrer");
   };
+  const stepBackward = () => {
+    setTree((prev) => {
+      if (!prev.currentNodeId) return prev;
+      redoNodeRef.current = prev.currentNodeId;
+      const parentId = prev.nodes[prev.currentNodeId]?.parentId ?? null;
+      const next = { ...prev, currentNodeId: parentId };
+      syncActiveItemTree(next);
+      return next;
+    });
+  };
+  const stepForward = () => {
+    setTree((prev) => {
+      const redoId = redoNodeRef.current;
+      let targetId: string | null = null;
+      if (redoId) {
+        if (!prev.currentNodeId && prev.rootChildren.includes(redoId)) {
+          targetId = redoId;
+          redoNodeRef.current = null;
+        } else if (prev.currentNodeId && (prev.nodes[prev.currentNodeId]?.children ?? []).includes(redoId)) {
+          targetId = redoId;
+          redoNodeRef.current = null;
+        }
+      }
+      if (!targetId) {
+        if (!prev.currentNodeId) targetId = prev.rootChildren[0] ?? null;
+        else targetId = prev.nodes[prev.currentNodeId]?.children[0] ?? null;
+      }
+      if (!targetId) return prev;
+      const next = { ...prev, currentNodeId: targetId };
+      syncActiveItemTree(next);
+      return next;
+    });
+  };
+  useEffect(() => {
+    if (!visible) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        stepBackward();
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        stepForward();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [visible, stepBackward, stepForward]);
   const toggleOrientation = () => {
     setBoardOrientation((o) => (o === "white" ? "black" : "white"));
   };
@@ -429,6 +504,7 @@ export function LocalHistoryMode(props: Props) {
             }
             const uci = `${m.from}${m.to}${m.promotion ?? ""}`;
             const newFen = g.fen();
+            redoNodeRef.current = null;
             setTree((prev) => {
               const next = addOrFollowMove(prev, uci, m.san, newFen);
               const aid = ensureActiveAutosave(next);
@@ -513,7 +589,7 @@ export function LocalHistoryMode(props: Props) {
             <option value="" disabled>
               Select saved puzzle
             </option>
-            {history.map((h) => (
+            {sortedHistory.map((h) => (
               <option key={h.id} value={h.id}>
                 {h.title}
               </option>
@@ -526,7 +602,7 @@ export function LocalHistoryMode(props: Props) {
       )}
 
       <div className="embed-controls">
-        <button onClick={toggleTurn}>Turn: {currentFen.split(/\s+/)[1] === "b" ? "Black" : "White"}</button>
+        <button onClick={toggleTurn}>Turn: {rootTurn === "b" ? "Black" : "White"}</button>
         <button onClick={toggleOrientation}>Flip board</button>
       </div>
 

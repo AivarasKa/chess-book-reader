@@ -17,6 +17,10 @@ export function LichessAnalysisMode(props: Props) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [embeddedFen, setEmbeddedFen] = useState(fen);
   const [embedOrientation, setEmbedOrientation] = useState<"white" | "black">("white");
+  const [fenTimeline, setFenTimeline] = useState<{ items: string[]; index: number }>({
+    items: [fen],
+    index: 0,
+  });
 
   const isValid = useMemo(() => {
     try {
@@ -30,6 +34,18 @@ export function LichessAnalysisMode(props: Props) {
   useEffect(() => {
     if (isValid) setEmbeddedFen(fen);
   }, [fen, isValid]);
+
+  useEffect(() => {
+    setFenTimeline((prev) => {
+      if (prev.items[prev.index] === fen) return prev;
+      const cut = prev.items.slice(0, prev.index + 1);
+      if (cut[cut.length - 1] === fen) {
+        return { items: cut, index: cut.length - 1 };
+      }
+      const nextItems = [...cut, fen];
+      return { items: nextItems, index: nextItems.length - 1 };
+    });
+  }, [fen]);
 
   const openEditor = () => setEditorOpen(true);
 
@@ -47,6 +63,46 @@ export function LichessAnalysisMode(props: Props) {
   const toggleOrientation = () => {
     setEmbedOrientation((o) => (o === "white" ? "black" : "white"));
   };
+  const stepBackward = () => {
+    if (fenTimeline.index <= 0) return;
+    const nextIndex = fenTimeline.index - 1;
+    const nextFen = fenTimeline.items[nextIndex];
+    setFenTimeline((prev) => ({ ...prev, index: Math.max(0, prev.index - 1) }));
+    onFenChange(nextFen);
+  };
+  const stepForward = () => {
+    if (fenTimeline.index >= fenTimeline.items.length - 1) return;
+    const nextIndex = fenTimeline.index + 1;
+    const nextFen = fenTimeline.items[nextIndex];
+    setFenTimeline((prev) => ({
+      ...prev,
+      index: Math.min(prev.items.length - 1, prev.index + 1),
+    }));
+    onFenChange(nextFen);
+  };
+  useEffect(() => {
+    if (!visible || editorOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        stepBackward();
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        stepForward();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [visible, editorOpen, stepBackward, stepForward]);
   const visibleNote =
     note &&
     (note.startsWith("Recognized via Chess_diagram_to_FEN model.") ||
