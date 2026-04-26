@@ -203,18 +203,18 @@ textarea {
 .pdf-pane {
   background: #111418;
   display: flex;
-  justify-content: center;
-  align-items: flex-start;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
   padding: 16px;
   position: relative;
 }
 
 .indexing-overlay {
-  position: absolute;
+  position: sticky;
   top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10;
+  margin: 0 auto;
+  z-index: 20;
   max-width: min(90%, 680px);
   padding: 10px 14px;
   border-radius: 10px;

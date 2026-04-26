@@ -393,6 +393,11 @@ export default function App() {
     setMenuOpen(false);
     try {
       await clearCache();
+      // Clearing cache should also close the currently open book/session view.
+      setFile(null);
+      setBook(null);
+      setPageCount(0);
+      setPageNumber(1);
       setDetection(null);
       setDetectionError("Cache cleared.");
     } catch (err) {
