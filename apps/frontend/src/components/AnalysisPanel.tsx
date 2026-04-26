@@ -23,6 +23,7 @@ export function AnalysisPanel(props: Props) {
           onClick={() => setMode("lichess")}
           role="tab"
           aria-selected={mode === "lichess"}
+          data-testid="mode-lichess"
         >
           Lichess
         </button>
@@ -31,6 +32,7 @@ export function AnalysisPanel(props: Props) {
           onClick={() => setMode("local")}
           role="tab"
           aria-selected={mode === "local"}
+          data-testid="mode-local"
         >
           Local history
         </button>

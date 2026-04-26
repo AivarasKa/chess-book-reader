@@ -6,6 +6,7 @@
   "scripts": {
     "setup": "python -m venv .venv && .venv\\Scripts\\python -m pip install --upgrade pip && .venv\\Scripts\\python -m pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision && .venv\\Scripts\\python -m pip install -r requirements.txt && npm run setup:models",
     "setup:models": ".venv\\Scripts\\python scripts/download_models.py",
-    "dev": ".venv\\Scripts\\python -m uvicorn app.main:app --host 127.0.0.1 --port 8123 --reload"
+    "dev": ".venv\\Scripts\\python -m uvicorn app.main:app --host 127.0.0.1 --port 8123 --reload",
+    "test": ".venv\\Scripts\\python -m pytest -q"
   }
 }

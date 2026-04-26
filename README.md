@@ -59,3 +59,20 @@ No Vite API proxy is required.
 ## Data location
 
 Session state and corrections cache are stored in a local SQLite database under the user's app-data folder (`%APPDATA%/chess_book_reader/state.sqlite3` on Windows, `~/.local/share/chess_book_reader/state.sqlite3` elsewhere).
+
+## Regression testing
+
+Use the regression checklist in [docs/regression-test-suite.md](docs/regression-test-suite.md) before shipping UI/recognition changes.
+
+Run automated E2E checks (Playwright):
+
+```bash
+npm run test:e2e
+```
+
+Run backend regression API tests:
+
+```bash
+cd apps/backend
+npm run test
+```

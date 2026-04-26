@@ -138,12 +138,13 @@ export function LocalHistoryMode(props: Props) {
     <section className="analysis-mode local-mode" style={{ display: visible ? "flex" : "none" }}>
       <div className="local-history-toolbar">
         <input
+          data-testid="history-name-input"
           type="text"
           value={nameDraft}
           onChange={(e) => setNameDraft(e.target.value)}
           placeholder="Optional puzzle name"
         />
-        <button className="primary" onClick={addToList}>
+        <button className="primary" onClick={addToList} data-testid="history-add">
           Add to list
         </button>
       </div>
@@ -151,6 +152,7 @@ export function LocalHistoryMode(props: Props) {
       {history.length > 0 && (
         <div className="local-history-toolbar">
           <select
+            data-testid="history-select"
             value={activeId ?? ""}
             onChange={(e) => selectItem(e.target.value)}
             className="history-select"
@@ -164,7 +166,7 @@ export function LocalHistoryMode(props: Props) {
               </option>
             ))}
           </select>
-          <button onClick={removeActive} disabled={!activeId}>
+          <button onClick={removeActive} disabled={!activeId} data-testid="history-remove">
             Remove
           </button>
         </div>
