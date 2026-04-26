@@ -253,6 +253,38 @@ textarea {
   min-height: 100%;
 }
 
+.analysis-mode-selector {
+  display: flex;
+  gap: 8px;
+}
+
+.analysis-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  flex: 1;
+}
+
+.local-history-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.local-history-toolbar input,
+.history-select {
+  flex: 1;
+}
+
+.local-board-wrap {
+  width: min(560px, 100%);
+  align-self: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
 .note {
   font-size: 12px;
   color: var(--fg-muted);

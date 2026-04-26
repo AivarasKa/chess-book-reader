@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/api.ts","./src/fingerprint.ts","./src/lichess.ts","./src/main.tsx","./src/pdfworker.ts","./src/vite-env.d.ts","./src/components/analysispanel.tsx","./src/components/pdfviewer.tsx"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/api.ts","./src/fingerprint.ts","./src/lichess.ts","./src/main.tsx","./src/pdfworker.ts","./src/vite-env.d.ts","./src/components/analysispanel.tsx","./src/components/pdfviewer.tsx","./src/components/analysis/lichessanalysismode.tsx","./src/components/analysis/localhistorymode.tsx"],"version":"5.9.3"}
