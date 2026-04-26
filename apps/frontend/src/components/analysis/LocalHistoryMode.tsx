@@ -264,6 +264,7 @@ export function LocalHistoryMode(props: Props) {
   const [nameDraft, setNameDraft] = useState("");
   const [boardRenderKey, setBoardRenderKey] = useState(0);
   const [boardOrientation, setBoardOrientation] = useState<"white" | "black">("white");
+  const hasHistory = history.length > 0;
 
   const boardElRef = useRef<HTMLDivElement | null>(null);
   const groundRef = useRef<Api | null>(null);
@@ -273,13 +274,15 @@ export function LocalHistoryMode(props: Props) {
   const lastDetectedFenRef = useRef(detectedFen);
   const currentFen = useMemo(() => getCurrentFen(tree), [tree]);
   const fenRef = useRef(currentFen);
-  const activeIdRef = useRef(activeId);
   fenRef.current = currentFen;
-  activeIdRef.current = activeId;
 
   useEffect(() => {
     if (visible) setBoardRenderKey((k) => k + 1);
   }, [visible]);
+
+  useEffect(() => {
+    if (visible) setBoardRenderKey((k) => k + 1);
+  }, [visible, hasHistory]);
 
   useEffect(() => {
     if (normalizeFenPosition(detectedFen) === normalizeFenPosition(lastDetectedFenRef.current)) return;
@@ -333,17 +336,6 @@ export function LocalHistoryMode(props: Props) {
   const syncActiveItemTree = (nextTree: VariationTree) => {
     if (!activeId) return;
     setHistory((prev) => prev.map((h) => (h.id === activeId ? { ...h, tree: nextTree } : h)));
-  };
-
-  const ensureActiveAutosave = (nextTree: VariationTree): string => {
-    if (activeIdRef.current) return activeIdRef.current;
-    const id = `history-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
-    const title = `Autosaved ${history.length + 1}`;
-    const item: LocalHistoryItem = { id, title, tree: nextTree };
-    setHistory((prev) => [item, ...prev]);
-    setActiveId(id);
-    activeIdRef.current = id;
-    return id;
   };
 
   const addToList = () => {
@@ -507,8 +499,7 @@ export function LocalHistoryMode(props: Props) {
             redoNodeRef.current = null;
             setTree((prev) => {
               const next = addOrFollowMove(prev, uci, m.san, newFen);
-              const aid = ensureActiveAutosave(next);
-              setHistory((hprev) => hprev.map((h) => (h.id === aid ? { ...h, tree: next } : h)));
+              syncActiveItemTree(next);
               return next;
             });
             fenRef.current = newFen;
@@ -578,7 +569,7 @@ export function LocalHistoryMode(props: Props) {
         </button>
       </div>
 
-      {history.length > 0 && (
+      {hasHistory && (
         <div className="local-history-toolbar">
           <select
             data-testid="history-select"
