@@ -43,6 +43,9 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [clearingCache, setClearingCache] = useState(false);
   const [enableLocalHistory, setEnableLocalHistory] = useState(false);
+  const [bookmarkA, setBookmarkA] = useState<number | null>(null);
+  const [bookmarkB, setBookmarkB] = useState<number | null>(null);
+  const [activeBookmarkSlot, setActiveBookmarkSlot] = useState<"A" | "B" | null>(null);
   const [indexing, setIndexing] = useState<{
     running: boolean;
     current: number;
@@ -110,6 +113,9 @@ export default function App() {
             setPageNumber(opened.last_page || 1);
             if (opened.last_fen) setFen(opened.last_fen);
           }
+          setBookmarkA(null);
+          setBookmarkB(null);
+          setActiveBookmarkSlot(null);
           setMissingFile(null);
           // Pre-cache once per book (persisted); reopening the same PDF skips this.
           if (!opened.precache_complete) {
@@ -248,6 +254,30 @@ export default function App() {
     },
     [pageCount, schedulePageProgressSave]
   );
+
+  const jumpToBookmark = useCallback(
+    (slot: "A" | "B") => {
+      const target = slot === "A" ? bookmarkA : bookmarkB;
+      if (target === null) return;
+      onPageChange(target);
+      setActiveBookmarkSlot(slot);
+    },
+    [bookmarkA, bookmarkB, onPageChange]
+  );
+  const setBookmark = useCallback((slot: "A" | "B") => {
+    if (slot === "A") setBookmarkA(pageNumber);
+    else setBookmarkB(pageNumber);
+    setActiveBookmarkSlot(slot);
+  }, [pageNumber]);
+  const jumpOtherBookmark = useCallback(() => {
+    if (bookmarkA === null || bookmarkB === null) return;
+    let next: "A" | "B";
+    if (activeBookmarkSlot) next = activeBookmarkSlot === "A" ? "B" : "A";
+    else if (pageNumber === bookmarkA && pageNumber !== bookmarkB) next = "B";
+    else if (pageNumber === bookmarkB && pageNumber !== bookmarkA) next = "A";
+    else next = "A";
+    jumpToBookmark(next);
+  }, [activeBookmarkSlot, bookmarkA, bookmarkB, jumpToBookmark, pageNumber]);
 
   const handleDoubleClick = useCallback(
     async (info: PageDoubleClick) => {
@@ -408,11 +438,30 @@ export default function App() {
         <span className="spacer" />
         {file && (
           <div className="page-controls">
-            <span style={{ color: "var(--fg-muted)", fontSize: 12 }}>
+            <div className="page-bookmark-controls">
+              <button onClick={() => setBookmark("A")} title="Set bookmark A to current page">
+                A:{bookmarkA ?? "-"}
+              </button>
+              <button
+                onClick={jumpOtherBookmark}
+                disabled={bookmarkA === null || bookmarkB === null}
+                title="Jump between bookmarks A and B"
+              >
+                ⇄
+              </button>
+              <button onClick={() => setBookmark("B")} title="Set bookmark B to current page">
+                B:{bookmarkB ?? "-"}
+              </button>
+            </div>
+            <span className="page-indicator">
               Page {pageNumber} / {pageCount || "?"}
             </span>
             <span style={{ width: 12 }} />
-            <button onClick={() => setScale((s) => Math.max(0.5, s - 0.2))}>-</button>
+            <button
+              onClick={() => setScale((s) => Math.max(0.5, s - 0.2))}
+            >
+              -
+            </button>
             <span style={{ color: "var(--fg-muted)", fontSize: 12 }}>
               {Math.round(scale * 100)}%
             </span>

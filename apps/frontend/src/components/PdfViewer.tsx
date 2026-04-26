@@ -44,10 +44,8 @@ export function PdfViewer(props: Props) {
 
   const [numPages, setNumPages] = useState(0);
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
-  const seenInitialPageRef = useRef(false);
 
   useEffect(() => {
-    seenInitialPageRef.current = false;
     pageRefs.current = {};
     setNumPages(0);
   }, [fileMemo?.url]);
@@ -83,12 +81,9 @@ export function PdfViewer(props: Props) {
 
   useEffect(() => {
     if (!numPages) return;
-    // Scroll to restored page once after load.
-    if (seenInitialPageRef.current) return;
     const target = pageRefs.current[pageNumber];
     if (!target) return;
     target.scrollIntoView({ block: "start" });
-    seenInitialPageRef.current = true;
   }, [numPages, pageNumber]);
 
   if (!file || !fileMemo) {

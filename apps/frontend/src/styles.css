@@ -161,6 +161,21 @@ textarea {
   gap: 6px;
 }
 
+.page-bookmark-controls {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 6px;
+  width: 240px;
+}
+
+.page-indicator {
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  min-width: 120px;
+  text-align: left;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(320px, 1fr) 8px 420px;
