@@ -3,10 +3,9 @@ name: Windows Portable Package
 on:
   workflow_dispatch:
     inputs:
-      release_suffix:
-        description: "Optional artifact suffix (e.g. v0.2.0)"
-        required: false
-        default: ""
+      version:
+        description: "Version label for package name (e.g. v0.2.0)"
+        required: true
 
 jobs:
   build-portable:
@@ -26,11 +25,8 @@ jobs:
       - name: Package portable zip
         shell: powershell
         run: |
-          $suffix = "${{ inputs.release_suffix }}"
-          if ([string]::IsNullOrWhiteSpace($suffix)) {
-            $suffix = "${env:GITHUB_SHA}".Substring(0, 7)
-          }
-          powershell -ExecutionPolicy Bypass -File packaging/windows-portable/package-portable.ps1 -VersionSuffix $suffix
+          $version = "${{ inputs.version }}"
+          powershell -ExecutionPolicy Bypass -File packaging/windows-portable/package-portable.ps1 -VersionSuffix $version
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
