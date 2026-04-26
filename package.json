@@ -10,7 +10,10 @@
     "stop:dev": "powershell -ExecutionPolicy Bypass -File scripts/stop-dev.ps1",
     "build:frontend": "cd apps/frontend && npm run build",
     "test:e2e": "cd apps/frontend && npm run test:e2e",
-    "setup:backend": "cd apps/backend && npm run setup"
+    "setup:backend": "cd apps/backend && npm run setup",
+    "launcher:run": "node packaging/windows-portable/launcher.cjs",
+    "launcher:check": "node packaging/windows-portable/launcher.cjs --check-only",
+    "package:portable:win": "powershell -ExecutionPolicy Bypass -File packaging/windows-portable/package-portable.ps1"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

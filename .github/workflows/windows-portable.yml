@@ -1,0 +1,39 @@
+name: Windows Portable Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_suffix:
+        description: "Optional artifact suffix (e.g. v0.2.0)"
+        required: false
+        default: ""
+
+jobs:
+  build-portable:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Launcher smoke check
+        run: node packaging/windows-portable/launcher.cjs --check-only --ci-smoke
+
+      - name: Package portable zip
+        shell: powershell
+        run: |
+          $suffix = "${{ inputs.release_suffix }}"
+          if ([string]::IsNullOrWhiteSpace($suffix)) {
+            $suffix = "${env:GITHUB_SHA}".Substring(0, 7)
+          }
+          powershell -ExecutionPolicy Bypass -File packaging/windows-portable/package-portable.ps1 -VersionSuffix $suffix
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChessBookReader-portable-win
+          path: dist/portable-win/*.zip
