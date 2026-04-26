@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Book,
+  clearCache,
   detectDiagram,
   getLastSession,
   markPrecacheComplete,
@@ -39,6 +40,9 @@ export default function App() {
   const [detectionError, setDetectionError] = useState<string | null>(null);
   const [missingFile, setMissingFile] = useState<Book | null>(null);
   const [sidePaneWidth, setSidePaneWidth] = useState(500);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
+  const [enableLocalHistory, setEnableLocalHistory] = useState(false);
   const [indexing, setIndexing] = useState<{
     running: boolean;
     current: number;
@@ -47,6 +51,7 @@ export default function App() {
   }>({ running: false, current: 0, total: 0, added: 0 });
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const pendingProgressPageRef = useRef<number | null>(null);
   const progressSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -224,6 +229,16 @@ export default function App() {
     pendingProgressPageRef.current = null;
   }, [book?.fingerprint]);
 
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (!menuRef.current || !target) return;
+      if (!menuRef.current.contains(target)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
   const onPageChange = useCallback(
     (next: number) => {
       const clamped = Math.max(1, Math.min(pageCount || next, next));
@@ -338,6 +353,24 @@ export default function App() {
   );
 
   const triggerFileDialog = () => fileInputRef.current?.click();
+  const handleClearCache = useCallback(async () => {
+    if (clearingCache) return;
+    const ok = window.confirm(
+      "Clear all detection cache and manual corrections? This also forces re-index on next book open."
+    );
+    if (!ok) return;
+    setClearingCache(true);
+    setMenuOpen(false);
+    try {
+      await clearCache();
+      setDetection(null);
+      setDetectionError("Cache cleared.");
+    } catch (err) {
+      setDetectionError("Failed to clear cache: " + (err as Error).message);
+    } finally {
+      setClearingCache(false);
+    }
+  }, [clearingCache]);
   const startResize = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     const min = 320;
@@ -386,6 +419,34 @@ export default function App() {
             <button onClick={() => setScale((s) => Math.min(3, s + 0.2))}>+</button>
           </div>
         )}
+        <div className="topbar-menu" ref={menuRef}>
+          <button
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label="Open menu"
+            onClick={() => setMenuOpen((v) => !v)}
+            title="Menu"
+          >
+            ☰
+          </button>
+          {menuOpen && (
+            <div className="menu-dropdown" role="menu">
+              <div className="menu-section-title">Experimental features</div>
+              <label className="menu-checkbox">
+                <input
+                  type="checkbox"
+                  checked={enableLocalHistory}
+                  onChange={(e) => setEnableLocalHistory(e.target.checked)}
+                />
+                Local history board
+              </label>
+              <div className="menu-divider" />
+              <button role="menuitem" onClick={handleClearCache} disabled={clearingCache}>
+                {clearingCache ? "Clearing cache..." : "Clear cache"}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div
@@ -395,6 +456,33 @@ export default function App() {
         }}
       >
         <div className="pdf-pane">
+          {indexing.running && (
+            <div className="indexing-overlay" aria-live="polite" role="status">
+              <div className="indexing-overlay-title">Indexing book diagrams</div>
+              <div className="indexing-overlay-meta">
+                {indexing.current}/{indexing.total || "?"} pages, cached {indexing.added} diagrams
+              </div>
+              <div
+                className="indexing-progress"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={
+                  indexing.total > 0 ? Math.round((indexing.current / indexing.total) * 100) : 0
+                }
+              >
+                <div
+                  className="indexing-progress-fill"
+                  style={{
+                    width:
+                      indexing.total > 0
+                        ? `${Math.max(0, Math.min(100, (indexing.current / indexing.total) * 100))}%`
+                        : "0%",
+                  }}
+                />
+              </div>
+            </div>
+          )}
           <PdfViewer
             file={file}
             pageNumber={pageNumber}
@@ -418,12 +506,6 @@ export default function App() {
           tabIndex={0}
         />
         <div className="side-pane">
-          {indexing.running && (
-            <div className="note">
-              Indexing book diagrams: {indexing.current}/{indexing.total || "?"} pages, cached{" "}
-              {indexing.added} diagrams.
-            </div>
-          )}
           {busy && <div className="note">Detecting...</div>}
           {!busy && detectionError && (
             <div className="note warning">{detectionError}</div>
@@ -435,6 +517,7 @@ export default function App() {
             warnLowConfidence={!!detection && detection.confidence < 0.5 && !detection.fromCache}
             onFenChange={onFenChange}
             onSaveCorrection={onSaveCorrection}
+            enableLocalHistory={enableLocalHistory}
           />
         </div>
       </div>

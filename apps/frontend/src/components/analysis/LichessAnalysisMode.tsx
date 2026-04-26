@@ -48,7 +48,11 @@ export function LichessAnalysisMode(props: Props) {
     setEmbedOrientation((o) => (o === "white" ? "black" : "white"));
   };
   const visibleNote =
-    note && note.startsWith("Recognized via Chess_diagram_to_FEN model.") ? null : note;
+    note &&
+    (note.startsWith("Recognized via Chess_diagram_to_FEN model.") ||
+      note.startsWith("Loaded from normalized diagram cache."))
+      ? null
+      : note;
 
   return (
     <section className="analysis-mode" style={{ display: visible ? "flex" : "none" }}>

@@ -93,6 +93,55 @@ textarea {
   font-size: 15px;
 }
 
+.topbar-menu {
+  position: relative;
+}
+
+.menu-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 40;
+}
+
+.menu-dropdown button {
+  width: 100%;
+  text-align: left;
+}
+
+.menu-section-title {
+  font-size: 11px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 6px;
+}
+
+.menu-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.menu-checkbox input[type="checkbox"] {
+  margin: 0;
+}
+
+.menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 0;
+}
+
 .topbar .file-name {
   color: var(--fg-muted);
   font-size: 13px;
@@ -142,6 +191,52 @@ textarea {
   justify-content: center;
   align-items: flex-start;
   padding: 16px;
+  position: relative;
+}
+
+.indexing-overlay {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  max-width: min(90%, 680px);
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--accent-strong);
+  background: rgba(26, 31, 41, 0.92);
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.indexing-overlay-title {
+  font-weight: 700;
+}
+
+.indexing-overlay-meta {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.indexing-progress {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.indexing-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+  border-radius: 999px;
+  transition: width 0.2s ease;
 }
 
 .pdf-scroll-stack {
