@@ -141,6 +141,10 @@ popd
 
 if not exist "apps\backend\vendor\Chess_diagram_to_FEN" (
   echo [3/4] Downloading Chess_diagram_to_FEN vendor repository...
+  if not exist "apps\backend\vendor" (
+    mkdir "apps\backend\vendor"
+    if errorlevel 1 goto :fail
+  )
   where curl.exe >nul 2>nul
   if not errorlevel 1 (
     curl.exe -L --fail --retry 3 --retry-delay 2 "https://github.com/tsoj/Chess_diagram_to_FEN/archive/refs/heads/main.zip" -o "apps\backend\vendor\Chess_diagram_to_FEN-main.zip"
