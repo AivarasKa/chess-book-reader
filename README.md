@@ -1,10 +1,11 @@
 # Chess Book Reader
 
+Vibecoded. Don't enter your banking details :)
+
 Local-first chess book reader. Open large PDFs efficiently, double-click a diagram to recognize the position, send it to a side analysis board, and use the Lichess board editor to manually correct anything the recognition gets wrong.
 
 ## Portable Quick Start (Windows)
 
-If you received a portable ZIP package, follow these steps:
 
 1. Unzip the package to a normal folder (for example: `Documents\ChessBookReader-portable-win`).
 2. Open the extracted folder.
