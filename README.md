@@ -133,6 +133,7 @@ Workflow: `.github/workflows/windows-portable.yml`
   - launcher smoke check (`--check-only --ci-smoke`)
   - package zip
   - upload `ChessBookReader-portable-win` artifact
+  - publish zip to GitHub Release for the provided `version` tag
 
 ## Data location
 
