@@ -10,11 +10,13 @@ type Props = {
   warnLowConfidence?: boolean;
   onFenChange: (fen: string) => void;
   onSaveCorrection?: (fen: string) => void;
+  onResetDiagram?: () => void | Promise<void>;
 };
 
 export function LichessAnalysisMode(props: Props) {
-  const { fen, visible, note, warnLowConfidence, onFenChange, onSaveCorrection } = props;
+  const { fen, visible, note, warnLowConfidence, onFenChange, onSaveCorrection, onResetDiagram } = props;
   const [editorOpen, setEditorOpen] = useState(false);
+  const [resettingDiagram, setResettingDiagram] = useState(false);
   const [embeddedFen, setEmbeddedFen] = useState(fen);
   const [embedOrientation, setEmbedOrientation] = useState<"white" | "black">("white");
   const [fenTimeline, setFenTimeline] = useState<{ items: string[]; index: number }>({
@@ -109,6 +111,8 @@ export function LichessAnalysisMode(props: Props) {
       note.startsWith("Loaded from normalized diagram cache."))
       ? null
       : note;
+  const canResetCorrectedRegion =
+    !!note && note.startsWith("Loaded a previously corrected position for this region.");
 
   return (
     <section className="analysis-mode" style={{ display: visible ? "flex" : "none" }}>
@@ -128,7 +132,29 @@ export function LichessAnalysisMode(props: Props) {
       </div>
 
       {visibleNote && (
-        <div className={"note" + (warnLowConfidence ? " warning" : "")}>{visibleNote}</div>
+        <div className={"note" + (warnLowConfidence ? " warning" : "")}>
+          {visibleNote}
+          {canResetCorrectedRegion && onResetDiagram && (
+            <>
+              {" "}
+              <button
+                type="button"
+                onClick={async () => {
+                  if (resettingDiagram) return;
+                  setResettingDiagram(true);
+                  try {
+                    await onResetDiagram();
+                  } finally {
+                    setResettingDiagram(false);
+                  }
+                }}
+                disabled={resettingDiagram}
+              >
+                {resettingDiagram ? "Resetting..." : "Reset this diagram"}
+              </button>
+            </>
+          )}
+        </div>
       )}
 
       <div className="action-row action-row-bottom">

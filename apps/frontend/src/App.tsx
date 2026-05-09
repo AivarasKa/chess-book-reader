@@ -7,6 +7,7 @@ import {
   markPrecacheComplete,
   openBook,
   precachePage,
+  resetDiagramRegion,
   saveCorrection,
   updateBookProgress,
 } from "./api";
@@ -382,6 +383,20 @@ export default function App() {
     [book, detection]
   );
 
+  const onResetDiagram = useCallback(async () => {
+    if (!book || !detection) return;
+    await resetDiagramRegion({
+      book_fingerprint: book.fingerprint,
+      page: detection.pageNumber,
+      region_x: detection.bounds.x,
+      region_y: detection.bounds.y,
+      region_w: detection.bounds.w,
+      region_h: detection.bounds.h,
+    });
+    setDetectionError("Diagram-specific cache cleared. Double-click the diagram again to re-detect.");
+    setDetection(null);
+  }, [book, detection]);
+
   const triggerFileDialog = () => fileInputRef.current?.click();
   const handleClearCache = useCallback(async () => {
     if (clearingCache) return;
@@ -572,6 +587,7 @@ export default function App() {
             warnLowConfidence={!!detection && detection.confidence < 0.5 && !detection.fromCache}
             onFenChange={onFenChange}
             onSaveCorrection={onSaveCorrection}
+            onResetDiagram={onResetDiagram}
             enableLocalHistory={enableLocalHistory}
           />
         </div>

@@ -83,6 +83,17 @@ class DiagramCacheLookup(BaseModel):
     page_height: float = Field(..., gt=0)
 
 
+class DiagramResetRegion(BaseModel):
+    book_fingerprint: str = Field(..., min_length=8, max_length=128)
+    page: int = Field(..., ge=1)
+    region_x: float = Field(..., ge=0)
+    region_y: float = Field(..., ge=0)
+    region_w: float = Field(..., gt=0)
+    region_h: float = Field(..., gt=0)
+    page_width: Optional[float] = Field(None, gt=0)
+    page_height: Optional[float] = Field(None, gt=0)
+
+
 @app.post("/api/books/open")
 def open_book(payload: BookOpen) -> dict[str, Any]:
     book = storage.upsert_book(payload.fingerprint, payload.path, payload.title)
@@ -299,6 +310,34 @@ async def detect_diagram(
 def clear_cache() -> dict[str, str]:
     storage.clear_all_caches()
     return {"status": "ok"}
+
+
+@app.post("/api/diagram/reset-region")
+def reset_diagram_region(payload: DiagramResetRegion) -> dict[str, Any]:
+    cx = payload.region_x + payload.region_w / 2.0
+    cy = payload.region_y + payload.region_h / 2.0
+    removed_corrections = storage.clear_correction_at_point(
+        payload.book_fingerprint, payload.page, (cx, cy)
+    )
+
+    removed_diagram_cache = 0
+    if (
+        payload.page_width
+        and payload.page_height
+        and payload.page_width > 0
+        and payload.page_height > 0
+    ):
+        removed_diagram_cache = storage.clear_diagram_cache_at_point(
+            payload.book_fingerprint,
+            payload.page,
+            (cx / payload.page_width, cy / payload.page_height),
+        )
+
+    return {
+        "status": "ok",
+        "removed_corrections": removed_corrections,
+        "removed_diagram_cache": removed_diagram_cache,
+    }
 
 
 @app.post("/api/diagram/precache-page")

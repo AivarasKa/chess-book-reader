@@ -295,3 +295,43 @@ def clear_all_caches() -> None:
         conn.execute("DELETE FROM corrections")
         conn.execute("DELETE FROM diagram_cache")
         conn.execute("UPDATE books SET precache_complete = 0")
+
+
+def clear_correction_at_point(
+    book_fingerprint: str,
+    page: int,
+    point: tuple[float, float],
+) -> int:
+    px, py = point
+    with _LOCK, connect() as conn:
+        cur = conn.execute(
+            """
+            DELETE FROM corrections
+            WHERE book_fingerprint = ?
+              AND page = ?
+              AND region_x <= ? AND ? <= region_x + region_w
+              AND region_y <= ? AND ? <= region_y + region_h
+            """,
+            (book_fingerprint, page, px, px, py, py),
+        )
+        return int(cur.rowcount or 0)
+
+
+def clear_diagram_cache_at_point(
+    book_fingerprint: str,
+    page: int,
+    point_n: tuple[float, float],
+) -> int:
+    px, py = point_n
+    with _LOCK, connect() as conn:
+        cur = conn.execute(
+            """
+            DELETE FROM diagram_cache
+            WHERE book_fingerprint = ?
+              AND page = ?
+              AND region_x_n <= ? AND ? <= region_x_n + region_w_n
+              AND region_y_n <= ? AND ? <= region_y_n + region_h_n
+            """,
+            (book_fingerprint, page, px, px, py, py),
+        )
+        return int(cur.rowcount or 0)

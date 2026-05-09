@@ -44,9 +44,12 @@ export function PdfViewer(props: Props) {
 
   const [numPages, setNumPages] = useState(0);
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  /** When scroll observation updates the page, avoid scrollIntoView — it fights the user's scroll position. */
+  const skipScrollIntoViewForPageRef = useRef<number | null>(null);
 
   useEffect(() => {
     pageRefs.current = {};
+    skipScrollIntoViewForPageRef.current = null;
     setNumPages(0);
   }, [fileMemo?.url]);
 
@@ -71,7 +74,10 @@ export function PdfViewer(props: Props) {
           .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
         if (!visible) return;
         const p = Number((visible.target as HTMLElement).dataset.page || 0);
-        if (p >= 1 && p !== pageNumber) onPageChange(p);
+        if (p >= 1 && p !== pageNumber) {
+          skipScrollIntoViewForPageRef.current = p;
+          onPageChange(p);
+        }
       },
       { threshold: [0.5, 0.75] }
     );
@@ -81,6 +87,11 @@ export function PdfViewer(props: Props) {
 
   useEffect(() => {
     if (!numPages) return;
+    if (skipScrollIntoViewForPageRef.current === pageNumber) {
+      skipScrollIntoViewForPageRef.current = null;
+      return;
+    }
+    skipScrollIntoViewForPageRef.current = null;
     const target = pageRefs.current[pageNumber];
     if (!target) return;
     target.scrollIntoView({ block: "start" });

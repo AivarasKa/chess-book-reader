@@ -200,3 +200,21 @@ export async function clearCache(): Promise<void> {
   const res = await fetch(apiUrl("/api/cache/clear"), { method: "POST" });
   await json<{ status: string }>(res);
 }
+
+export async function resetDiagramRegion(input: {
+  book_fingerprint: string;
+  page: number;
+  region_x: number;
+  region_y: number;
+  region_w: number;
+  region_h: number;
+  page_width?: number;
+  page_height?: number;
+}): Promise<{ removed_corrections: number; removed_diagram_cache: number }> {
+  const res = await fetch(apiUrl("/api/diagram/reset-region"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return json<{ status: string; removed_corrections: number; removed_diagram_cache: number }>(res);
+}

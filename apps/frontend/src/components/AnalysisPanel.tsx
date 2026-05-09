@@ -8,11 +8,13 @@ type Props = {
   warnLowConfidence?: boolean;
   onFenChange: (fen: string) => void;
   onSaveCorrection?: (fen: string) => void;
+  onResetDiagram?: () => void | Promise<void>;
   enableLocalHistory?: boolean;
 };
 
 export function AnalysisPanel(props: Props) {
-  const { fen, note, warnLowConfidence, onFenChange, onSaveCorrection, enableLocalHistory } = props;
+  const { fen, note, warnLowConfidence, onFenChange, onSaveCorrection, onResetDiagram, enableLocalHistory } =
+    props;
   const [mode, setMode] = useState<"lichess" | "local">("lichess");
   const localEnabled = !!enableLocalHistory;
 
@@ -53,6 +55,7 @@ export function AnalysisPanel(props: Props) {
         warnLowConfidence={warnLowConfidence}
         onFenChange={onFenChange}
         onSaveCorrection={onSaveCorrection}
+        onResetDiagram={onResetDiagram}
       />
       {localEnabled && (
         <LocalHistoryMode
