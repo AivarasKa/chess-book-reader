@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Document, Page } from "react-pdf";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -63,12 +63,34 @@ export function PdfViewer(props: Props) {
   const [numPages, setNumPages] = useState(0);
   const [pageBaseDims, setPageBaseDims] = useState<{ w: number; h: number }[] | null>(null);
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  /** Fraction along the scrollable range (0–1); kept in sync on scroll so zoom/pane layout can restore position. */
+  const scrollRatioRef = useRef(0);
+  /** Previous `scale` for detecting zoom-only layout changes (see scroll restore layout effect). */
+  const prevScaleForScrollRef = useRef<number | null>(null);
   /** When scroll observation updates the page, avoid scrollIntoView — it fights the user's scroll position. */
   const skipScrollIntoViewForPageRef = useRef<number | null>(null);
+
+  const getPdfScrollPane = useCallback((): HTMLElement | null => {
+    for (let p = 1; p <= numPages; p++) {
+      const el = pageRefs.current[p];
+      if (el) {
+        const pane = el.closest(".pdf-pane");
+        if (pane instanceof HTMLElement) return pane;
+      }
+    }
+    return null;
+  }, [numPages]);
+
+  const syncScrollRatioFromPane = useCallback((pane: HTMLElement) => {
+    const max = Math.max(0, pane.scrollHeight - pane.clientHeight);
+    scrollRatioRef.current = max > 0 ? pane.scrollTop / max : 0;
+  }, []);
 
   useEffect(() => {
     pageRefs.current = {};
     skipScrollIntoViewForPageRef.current = null;
+    prevScaleForScrollRef.current = null;
+    scrollRatioRef.current = 0;
     setNumPages(0);
     setPageBaseDims(null);
   }, [fileMemo?.url]);
@@ -115,6 +137,12 @@ export function PdfViewer(props: Props) {
       .map(([k, el]) => ({ page: Number(k), el }))
       .filter((x): x is { page: number; el: HTMLDivElement } => !!x.el);
     if (!wrappers.length) return;
+
+    // Measure intersection inside the PDF scrollport, not the viewport — avoids
+    // spurious "current page" flips when only the side pane width changes.
+    const scrollRoot =
+      (wrappers[0].el.closest(".pdf-pane") as HTMLElement | null) ?? null;
+
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries
@@ -127,7 +155,10 @@ export function PdfViewer(props: Props) {
           onPageChange(p);
         }
       },
-      { threshold: [0.5, 0.75] }
+      {
+        ...(scrollRoot ? { root: scrollRoot } : {}),
+        threshold: [0.5, 0.75],
+      }
     );
     wrappers.forEach((w) => observer.observe(w.el));
     return () => observer.disconnect();
@@ -143,9 +174,53 @@ export function PdfViewer(props: Props) {
     const target = pageRefs.current[pageNumber];
     if (!target) return;
     target.scrollIntoView({ block: "start" });
-  }, [numPages, pageNumber]);
+    const pane = target.closest(".pdf-pane");
+    if (pane instanceof HTMLElement) {
+      requestAnimationFrame(() => syncScrollRatioFromPane(pane));
+    }
+  }, [numPages, pageNumber, syncScrollRatioFromPane]);
 
   const layoutReady = pageBaseDims && pageBaseDims.length === numPages && numPages > 0;
+
+  useEffect(() => {
+    if (!layoutReady || !numPages) return;
+    const pane = getPdfScrollPane();
+    if (!pane) return;
+    const onScroll = () => syncScrollRatioFromPane(pane);
+    pane.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => pane.removeEventListener("scroll", onScroll);
+  }, [layoutReady, numPages, getPdfScrollPane, syncScrollRatioFromPane]);
+
+  /** Keep the same *relative* position when zoom changes (pixel scrollTop is wrong once slot heights change). */
+  useLayoutEffect(() => {
+    if (!layoutReady || !numPages) return;
+    const pane = getPdfScrollPane();
+    if (!pane) return;
+
+    const prev = prevScaleForScrollRef.current;
+    if (prev === null) {
+      prevScaleForScrollRef.current = scale;
+      syncScrollRatioFromPane(pane);
+      return;
+    }
+
+    if (prev === scale) {
+      const max = Math.max(0, pane.scrollHeight - pane.clientHeight);
+      if (max > 0) {
+        pane.scrollTop = scrollRatioRef.current * max;
+      }
+      syncScrollRatioFromPane(pane);
+      return;
+    }
+
+    prevScaleForScrollRef.current = scale;
+    const max = Math.max(0, pane.scrollHeight - pane.clientHeight);
+    if (max <= 0) return;
+    const r = scrollRatioRef.current;
+    pane.scrollTop = r * max;
+    syncScrollRatioFromPane(pane);
+  }, [scale, numPages, layoutReady, getPdfScrollPane, syncScrollRatioFromPane]);
 
   const pageList = useMemo(
     () => (numPages ? Array.from({ length: numPages }, (_, i) => i + 1) : []),
