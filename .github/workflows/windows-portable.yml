@@ -1,5 +1,8 @@
 name: Trigger release
 
+# Shown on each run in the Actions tab (workflow `name` alone is static).
+run-name: Release ${{ inputs.version }} (Windows portable)
+
 on:
   workflow_dispatch:
     inputs:
@@ -9,6 +12,7 @@ on:
 
 jobs:
   build-portable:
+    name: Build ${{ inputs.version }}
     runs-on: windows-latest
     permissions:
       contents: write
@@ -33,14 +37,14 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ChessBookReader-portable-win
+          name: ChessBookReader-portable-win-${{ inputs.version }}
           path: dist/portable-win/*.zip
 
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.version }}
-          name: ${{ inputs.version }}
+          name: Chess Book Reader ${{ inputs.version }}
           generate_release_notes: true
           draft: false
           prerelease: false
