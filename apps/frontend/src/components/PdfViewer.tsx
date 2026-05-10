@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page } from "react-pdf";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import "../pdfWorker";
@@ -21,6 +22,9 @@ export type PageDoubleClick = {
 
 const UPLOAD_MAX_DIMENSION = 1600;
 
+/** Pages on each side of a focus page that get a real `<Page>` (total ≈ 2×radius+1). 2 → five pages. */
+const VIRTUAL_PAGE_RADIUS = 2;
+
 type Props = {
   file: File | null;
   pageNumber: number;
@@ -30,6 +34,15 @@ type Props = {
   onPageDoubleClick: (info: PageDoubleClick) => void;
   detectionBox?: { x: number; y: number; w: number; h: number; pageNumber: number } | null;
 };
+
+function pageInVirtualWindow(
+  p: number,
+  focus: number,
+  numPages: number,
+  radius: number
+): boolean {
+  return p >= Math.max(1, focus - radius) && p <= Math.min(numPages, focus + radius);
+}
 
 export function PdfViewer(props: Props) {
   const { file, pageNumber, scale, onPageCount, onPageChange, onPageDoubleClick, detectionBox } =
@@ -42,7 +55,13 @@ export function PdfViewer(props: Props) {
     };
   }, [fileMemo]);
 
+  const fileUrlRef = useRef<string | null>(null);
+  useEffect(() => {
+    fileUrlRef.current = fileMemo?.url ?? null;
+  }, [fileMemo?.url]);
+
   const [numPages, setNumPages] = useState(0);
+  const [pageBaseDims, setPageBaseDims] = useState<{ w: number; h: number }[] | null>(null);
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
   /** When scroll observation updates the page, avoid scrollIntoView — it fights the user's scroll position. */
   const skipScrollIntoViewForPageRef = useRef<number | null>(null);
@@ -51,14 +70,43 @@ export function PdfViewer(props: Props) {
     pageRefs.current = {};
     skipScrollIntoViewForPageRef.current = null;
     setNumPages(0);
+    setPageBaseDims(null);
   }, [fileMemo?.url]);
 
   const handleDocumentLoad = useCallback(
-    ({ numPages }: { numPages: number }) => {
-      setNumPages(numPages);
-      onPageCount(numPages);
+    (pdf: PDFDocumentProxy) => {
+      onPageCount(pdf.numPages);
+      const startedUrl = fileUrlRef.current;
+      void (async () => {
+        try {
+          const dims = await Promise.all(
+            Array.from({ length: pdf.numPages }, (_, idx) =>
+              pdf.getPage(idx + 1).then((page) => {
+                const vp = page.getViewport({ scale: 1 });
+                return { w: vp.width, h: vp.height };
+              })
+            )
+          );
+          if (fileUrlRef.current !== startedUrl) return;
+          setPageBaseDims(dims);
+          setNumPages(pdf.numPages);
+        } catch (e) {
+          console.error("PDF page dimensions failed", e);
+        }
+      })();
     },
     [onPageCount]
+  );
+
+  const shouldRenderPdfPage = useCallback(
+    (p: number) => {
+      if (!numPages) return false;
+      if (pageInVirtualWindow(p, pageNumber, numPages, VIRTUAL_PAGE_RADIUS)) return true;
+      const det = detectionBox?.pageNumber;
+      if (det != null && pageInVirtualWindow(p, det, numPages, VIRTUAL_PAGE_RADIUS)) return true;
+      return false;
+    },
+    [numPages, pageNumber, detectionBox?.pageNumber]
   );
 
   useEffect(() => {
@@ -83,7 +131,7 @@ export function PdfViewer(props: Props) {
     );
     wrappers.forEach((w) => observer.observe(w.el));
     return () => observer.disconnect();
-  }, [numPages, onPageChange, pageNumber, scale]);
+  }, [numPages, onPageChange, pageNumber, scale, pageBaseDims]);
 
   useEffect(() => {
     if (!numPages) return;
@@ -96,6 +144,13 @@ export function PdfViewer(props: Props) {
     if (!target) return;
     target.scrollIntoView({ block: "start" });
   }, [numPages, pageNumber]);
+
+  const layoutReady = pageBaseDims && pageBaseDims.length === numPages && numPages > 0;
+
+  const pageList = useMemo(
+    () => (numPages ? Array.from({ length: numPages }, (_, i) => i + 1) : []),
+    [numPages]
+  );
 
   if (!file || !fileMemo) {
     return (
@@ -112,20 +167,52 @@ export function PdfViewer(props: Props) {
       onLoadSuccess={handleDocumentLoad}
       onLoadError={(err) => console.error("PDF load error", err)}
     >
-      <div className="pdf-scroll-stack">
-        {Array.from({ length: numPages }, (_, i) => i + 1).map((p) => (
-          <RenderedPage
-            key={p}
-            pageNumber={p}
-            scale={scale}
-            onPageDoubleClick={onPageDoubleClick}
-            detectionBox={detectionBox && detectionBox.pageNumber === p ? detectionBox : null}
-            setWrapperRef={(el) => {
-              pageRefs.current[p] = el;
-            }}
-          />
-        ))}
-      </div>
+      {!layoutReady ? (
+        <div className="empty">
+          <p>Preparing pages…</p>
+        </div>
+      ) : (
+        <div className="pdf-scroll-stack">
+          {pageList.map((p) => {
+            const dim = pageBaseDims![p - 1];
+            const w = dim.w * scale;
+            const h = dim.h * scale;
+            const shouldRender = shouldRenderPdfPage(p);
+            return (
+              <div
+                key={p}
+                ref={(el) => {
+                  pageRefs.current[p] = el;
+                }}
+                data-page={p}
+                className="pdf-page-slot"
+                style={{
+                  minHeight: h,
+                  width: "100%",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "flex-start",
+                }}
+              >
+                {shouldRender ? (
+                  <RenderedPage
+                    pageNumber={p}
+                    scale={scale}
+                    onPageDoubleClick={onPageDoubleClick}
+                    detectionBox={detectionBox && detectionBox.pageNumber === p ? detectionBox : null}
+                  />
+                ) : (
+                  <div
+                    className="pdf-page-placeholder"
+                    style={{ width: w, height: h, flexShrink: 0 }}
+                    aria-hidden
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </Document>
   );
 }
@@ -135,9 +222,8 @@ function RenderedPage(props: {
   scale: number;
   onPageDoubleClick: (info: PageDoubleClick) => void;
   detectionBox?: { x: number; y: number; w: number; h: number; pageNumber: number } | null;
-  setWrapperRef: (el: HTMLDivElement | null) => void;
 }) {
-  const { pageNumber, scale, onPageDoubleClick, detectionBox, setWrapperRef } = props;
+  const { pageNumber, scale, onPageDoubleClick, detectionBox } = props;
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [renderedSize, setRenderedSize] = useState<{ w: number; h: number } | null>(null);
@@ -218,11 +304,9 @@ function RenderedPage(props: {
     <div
       ref={(el) => {
         wrapperRef.current = el;
-        setWrapperRef(el);
       }}
       className="pdf-page-wrapper"
       onDoubleClick={handleDoubleClick}
-      data-page={pageNumber}
     >
       <Page
         pageNumber={pageNumber}
@@ -232,7 +316,7 @@ function RenderedPage(props: {
         onRenderSuccess={handleRenderSuccess}
       />
       {detectionBox && renderedSize && canvasRef.current && (
-        <DetectionBoxOverlay box={detectionBox} renderedSize={renderedSize} canvas={canvasRef.current} />
+        <DetectionBoxOverlay box={detectionBox} canvas={canvasRef.current} />
       )}
     </div>
   );
@@ -240,7 +324,6 @@ function RenderedPage(props: {
 
 function DetectionBoxOverlay(props: {
   box: { x: number; y: number; w: number; h: number };
-  renderedSize: { w: number; h: number };
   canvas: HTMLCanvasElement;
 }) {
   const { box, canvas } = props;
@@ -249,8 +332,8 @@ function DetectionBoxOverlay(props: {
   if (!wrapperRect) return null;
   const scaleX = rect.width / canvas.width;
   const scaleY = rect.height / canvas.height;
-  const left = (rect.left - wrapperRect.left) + box.x * scaleX;
-  const top = (rect.top - wrapperRect.top) + box.y * scaleY;
+  const left = rect.left - wrapperRect.left + box.x * scaleX;
+  const top = rect.top - wrapperRect.top + box.y * scaleY;
   const width = box.w * scaleX;
   const height = box.h * scaleY;
   return (

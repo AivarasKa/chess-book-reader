@@ -270,6 +270,17 @@ textarea {
   line-height: 1.5;
 }
 
+.pdf-page-slot {
+  flex-shrink: 0;
+}
+
+.pdf-page-placeholder {
+  display: block;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
 .pdf-page-wrapper {
   position: relative;
   user-select: none;
