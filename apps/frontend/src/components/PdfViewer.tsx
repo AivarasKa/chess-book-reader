@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Document, Page } from "react-pdf";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -22,8 +29,27 @@ export type PageDoubleClick = {
 
 const UPLOAD_MAX_DIMENSION = 1600;
 
-/** Pages on each side of a focus page that get a real `<Page>` (total ≈ 2×radius+1). 2 → five pages. */
-const VIRTUAL_PAGE_RADIUS = 2;
+/**
+ * Pages on each side of a focus page that get a real `<Page>` (total ≈ 2×radius+1).
+ * 4 → nine pages. Higher gives more buffer for fast scrolling at the cost of memory.
+ */
+const VIRTUAL_PAGE_RADIUS = 4;
+
+/**
+ * After the live `pageNumber` stops changing for this many ms, we update the
+ * virtualization focus and (re)mount the surrounding `<Page>` components. This
+ * stops the scrollbar drag from churning pdf.js render tasks — vital for scanned
+ * image-only PDFs where each render is expensive and the worker can't preempt
+ * an in-flight image decode.
+ */
+const VIRTUAL_FOCUS_DEBOUNCE_MS = 200;
+
+/**
+ * After the virtualization focus moves, render only the focus page for this long
+ * before mounting the surrounding buffer pages. Makes the page the user is actually
+ * looking at render first, instead of waiting for off-screen neighbours.
+ */
+const FOCUS_EXPAND_DELAY_MS = 350;
 
 type Props = {
   file: File | null;
@@ -69,6 +95,55 @@ export function PdfViewer(props: Props) {
   const prevScaleForScrollRef = useRef<number | null>(null);
   /** When scroll observation updates the page, avoid scrollIntoView — it fights the user's scroll position. */
   const skipScrollIntoViewForPageRef = useRef<number | null>(null);
+  /** Latest pageNumber visible to the intersection observer callback (avoids effect churn during fast scroll). */
+  const pageNumberRef = useRef(pageNumber);
+  useEffect(() => {
+    pageNumberRef.current = pageNumber;
+  }, [pageNumber]);
+
+  /**
+   * Focus page used to decide which pages get a real `<Page>` (vs. a cheap placeholder).
+   * Updated on a trailing-edge debounce after `pageNumber` stops changing, so a fast
+   * scrollbar drag does not cause repeated mount/unmount of `<Page>` components.
+   */
+  const [virtualFocusPage, setVirtualFocusPage] = useState(pageNumber);
+  useEffect(() => {
+    if (virtualFocusPage === pageNumber) return;
+    const t = setTimeout(() => setVirtualFocusPage(pageNumber), VIRTUAL_FOCUS_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [pageNumber, virtualFocusPage]);
+
+  /**
+   * Two-stage rendering: when the focus *jumps* far enough that the new buffer
+   * would have no overlap with the old one (e.g., after a fast scrollbar drag),
+   * first mount only the focus page so pdf.js renders it before anything else,
+   * then expand to the full virtualization radius. Without this, the focus page
+   * renders last in the worker queue on big jumps and the user stares at a white
+   * center page while the off-screen buffer renders first.
+   *
+   * For *near* focus moves (slow page-by-page scrolling) we skip the collapse
+   * entirely — the previously-rendered buffer pages remain mounted, no flicker.
+   */
+  const [focusPhaseExpanded, setFocusPhaseExpanded] = useState(true);
+  const prevVirtualFocusRef = useRef(virtualFocusPage);
+  useEffect(() => {
+    const prevFocus = prevVirtualFocusRef.current;
+    prevVirtualFocusRef.current = virtualFocusPage;
+    if (prevFocus === virtualFocusPage) return;
+
+    const jumpDistance = Math.abs(virtualFocusPage - prevFocus);
+    // Old buffer was prevFocus ± VIRTUAL_PAGE_RADIUS. New buffer is virtualFocusPage ± radius.
+    // They overlap when jumpDistance <= 2 * VIRTUAL_PAGE_RADIUS. If they do, keep the
+    // buffer expanded so already-rendered pages stay mounted.
+    if (jumpDistance <= 2 * VIRTUAL_PAGE_RADIUS) {
+      setFocusPhaseExpanded(true);
+      return;
+    }
+
+    setFocusPhaseExpanded(false);
+    const t = setTimeout(() => setFocusPhaseExpanded(true), FOCUS_EXPAND_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [virtualFocusPage]);
 
   const getPdfScrollPane = useCallback((): HTMLElement | null => {
     for (let p = 1; p <= numPages; p++) {
@@ -93,6 +168,10 @@ export function PdfViewer(props: Props) {
     scrollRatioRef.current = 0;
     setNumPages(0);
     setPageBaseDims(null);
+    // Realign the virtualization focus to the current target page when a new
+    // file is loaded — otherwise the next book briefly tries to mount pages
+    // around the previous book's focus before the debounce catches up.
+    setVirtualFocusPage(pageNumberRef.current);
   }, [fileMemo?.url]);
 
   const handleDocumentLoad = useCallback(
@@ -123,12 +202,13 @@ export function PdfViewer(props: Props) {
   const shouldRenderPdfPage = useCallback(
     (p: number) => {
       if (!numPages) return false;
-      if (pageInVirtualWindow(p, pageNumber, numPages, VIRTUAL_PAGE_RADIUS)) return true;
+      const radius = focusPhaseExpanded ? VIRTUAL_PAGE_RADIUS : 0;
+      if (pageInVirtualWindow(p, virtualFocusPage, numPages, radius)) return true;
       const det = detectionBox?.pageNumber;
       if (det != null && pageInVirtualWindow(p, det, numPages, VIRTUAL_PAGE_RADIUS)) return true;
       return false;
     },
-    [numPages, pageNumber, detectionBox?.pageNumber]
+    [numPages, virtualFocusPage, focusPhaseExpanded, detectionBox?.pageNumber]
   );
 
   useEffect(() => {
@@ -150,7 +230,11 @@ export function PdfViewer(props: Props) {
           .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
         if (!visible) return;
         const p = Number((visible.target as HTMLElement).dataset.page || 0);
-        if (p >= 1 && p !== pageNumber) {
+        // Compare against the ref instead of a closed-over pageNumber so we don't
+        // have to recreate the observer on every scroll-induced page change — that
+        // churn drops scroll events and amplifies pdf.js render queuing on
+        // image-heavy/scanned PDFs.
+        if (p >= 1 && p !== pageNumberRef.current) {
           skipScrollIntoViewForPageRef.current = p;
           onPageChange(p);
         }
@@ -162,7 +246,7 @@ export function PdfViewer(props: Props) {
     );
     wrappers.forEach((w) => observer.observe(w.el));
     return () => observer.disconnect();
-  }, [numPages, onPageChange, pageNumber, scale, pageBaseDims]);
+  }, [numPages, onPageChange, scale, pageBaseDims]);
 
   useEffect(() => {
     if (!numPages) return;
@@ -389,6 +473,12 @@ function RenderedPage(props: {
         renderAnnotationLayer={false}
         renderTextLayer={false}
         onRenderSuccess={handleRenderSuccess}
+        onRenderError={(err) =>
+          console.error("[PdfViewer] page render failed", { pageNumber, err })
+        }
+        onLoadError={(err) =>
+          console.error("[PdfViewer] page load failed", { pageNumber, err })
+        }
       />
       {detectionBox && renderedSize && canvasRef.current && (
         <DetectionBoxOverlay box={detectionBox} canvas={canvasRef.current} />
